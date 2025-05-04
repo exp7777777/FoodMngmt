@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:foodmngmt/foodmngmt_AccountRegister.dart';
 import 'package:foodmngmt/foodmngmt_AccountSettings.dart';
-import 'package:foodmngmt/foodmngmt_AccoutLogin.dart';
 import 'package:foodmngmt/foodmngmt_FoodManager.dart';
 import 'package:foodmngmt/foodmngmt_HomePage.dart';
 import 'main.dart';

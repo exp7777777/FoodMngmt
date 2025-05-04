@@ -1,85 +1,89 @@
 import 'package:flutter/material.dart';
+import 'package:foodmngmt/foodmngmt_AccountRegister.dart';
 import 'package:foodmngmt/foodmngmt_AccountSettings.dart';
-import 'package:foodmngmt/foodmngmt_AccoutLogin.dart';
 import 'package:foodmngmt/foodmngmt_FoodManager.dart';
 import 'package:foodmngmt/foodmngmt_HomePage.dart';
 import 'main.dart';
 
-class AccountSettings extends StatefulWidget {
-  @override
-  _AccountSettingsState createState() => _AccountSettingsState();
-}
+import 'package:lucide_icons/lucide_icons.dart';
 
-class _AccountSettingsState extends State<AccountSettings> {
-  final TextEditingController _nicknameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
-  final String defaultUsername = "I5like2co0k";
 
+class AccountSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: false,
-      backgroundColor: Color(0xFFFFF5E1), // ProfileAccountPage 的背景色
+      backgroundColor: Color(0xFFFFF5E1), // 奶油色背景
       body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          padding: EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white, // 白色背景
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Align(
+                alignment: Alignment.topLeft,
+                child: Icon(LucideIcons.home, size: 30), // 左上角房子 icon
+              ),
+              SizedBox(height: 10),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundColor: Colors.grey[300],
+                    backgroundImage: AssetImage('assets/profile_pic.png'), // 頭像
                   ),
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundImage: AssetImage("assets/profile_placeholder.png"),
-                        backgroundColor: Colors.grey[300],
+                  Positioned(
+                    right: -10,
+                    bottom: -10,
+                    child: Icon(LucideIcons.edit, size: 24, color: Colors.black), // 右下角 edit icon
+                  ),
+                ],
+              ),
+              SizedBox(height: 20),
+              _buildTextField('暱稱', '卯咪愛喝茶', false, showEditIcon: true),
+              _buildTextField('帳號', 'I5like2co0k', false, showEditIcon: true),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  _buildTextField('修改密碼', '******', true),
+                  Positioned(
+                    right: 10,
+                    bottom: -18, // ✅ **調整與 ProfileSetupPage 保持一致**
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 4), // ✅ **讓間隔與 ProfileSetupPage 一致**
+                      child: Text(
+                        '※需6~12含英、數',
+                        style: TextStyle(fontSize: 12, color: Colors.black),
                       ),
-                      SizedBox(height: 20),
-                      _buildTextField(_nicknameController, "暱稱", "※不須特殊符號", hintText: "六字元"),
-                      SizedBox(height: 10),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text("帳號", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      ),
-                      SizedBox(height: 4),
-                      Center(
-                        child: Text(
-                          defaultUsername,
-                          style: TextStyle(fontSize: 16),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      SizedBox(height: 10),
-                      _buildTextField(_passwordController, "密碼", "※需6~12含英、數", obscureText: true),
-                      SizedBox(height: 10),
-                      _buildTextField(_confirmPasswordController, "", "", obscureText: true, hintText: "確認密碼"),
-                      SizedBox(height: 20),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          backgroundColor: Color(0xFFFF914D),
-                          padding: EdgeInsets.symmetric(horizontal: 30, vertical: 10),
-                        ),
-                        onPressed: () {},
-                        child: Text(
-                          "確認",
-                          style: TextStyle(color: Colors.white, fontSize: 18),
-                        ),
-                      ),
-                    ],
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 30), // ✅ 增加間距，防止確認密碼框與修改密碼框過於接近
+              _buildTextField('', '確認密碼', true, isHint: true, showEditIcon: true),
+              SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  onPressed: () {},
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                    child: Text('更新', style: TextStyle(color: Colors.white,fontSize: 18)),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -128,7 +132,7 @@ class _AccountSettingsState extends State<AccountSettings> {
           else if (index == 2) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => AccountSettings()),
+              MaterialPageRoute(builder: (context) => FoodMngmtPage()),
             );
             // 這裡可以加入 "新增" 的功能
           }
@@ -151,46 +155,31 @@ class _AccountSettingsState extends State<AccountSettings> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, String note, {bool obscureText = false, String? hintText}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (label.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 5), // 避免上框線被遮擋
-            child: Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-        Container(
-          decoration: BoxDecoration(
-            color: Color(0xFFE0E0E0), // ProfileAccountPage 的灰色無框樣式
-            borderRadius: BorderRadius.circular(10),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: TextField(
-            controller: controller,
+  Widget _buildTextField(String label, String hint, bool obscureText,
+      {bool isHint = false, bool showEditIcon = false}) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 15),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (label.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(bottom: 5),
+              child: Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          TextField(
             obscureText: obscureText,
             decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: TextStyle(color: Colors.grey),
-              border: InputBorder.none,
+              hintText: hint,
+              hintStyle: TextStyle(color: isHint ? Colors.grey : Colors.black),
+              filled: true,
+              fillColor: Colors.grey[200],
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+              suffixIcon: showEditIcon ? Icon(LucideIcons.edit, color: Colors.grey) : null,
             ),
           ),
-        ),
-        if (note.isNotEmpty)
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                note,
-                style: TextStyle(fontSize: 12, color: Colors.black),
-              ),
-            ),
-          ),
-      ],
+        ],
+      ),
     );
-
   }
-
 }
-

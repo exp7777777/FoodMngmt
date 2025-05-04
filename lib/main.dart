@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:foodmngmt/foodmngmt_AccountLogin.dart';
+import 'package:foodmngmt/foodmngmt_AccountRegister.dart';
 import 'package:foodmngmt/foodmngmt_AccountSettings.dart';
-import 'package:foodmngmt/foodmngmt_AccoutLogin.dart';
 import 'package:foodmngmt/foodmngmt_FoodManager.dart';
 import 'package:foodmngmt/foodmngmt_HomePage.dart';
 import 'main.dart';
@@ -97,6 +98,22 @@ class Main extends StatelessWidget {
               ),
               child: const Text(
                 "登入",
+                style: TextStyle(fontSize: 20),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => AccountRegister()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF914D),
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+              ),
+              child: const Text(
+                "註冊頁面",
                 style: TextStyle(fontSize: 20),
               ),
             ),

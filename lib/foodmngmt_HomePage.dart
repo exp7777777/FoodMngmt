@@ -1,3 +1,4 @@
+import 'package:foodmngmt/foodmngmt_AccountRegister.dart';
 import 'package:foodmngmt/foodmngmt_AccountSettings.dart';
 import 'package:foodmngmt/foodmngmt_FoodManager.dart';
 import 'package:foodmngmt/foodmngmt_HomePage.dart';
@@ -158,7 +159,7 @@ class _HomePageState extends State<HomePage> {
           if (index == 0) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => HomePage()),
+              MaterialPageRoute(builder: (context) => MyApp()),
             );
             // 這裡可以加入 "首頁" 的功能
           }
