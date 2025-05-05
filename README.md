@@ -1,4 +1,4 @@
-# 用 Android Studio 綁定 GitHub 帳號（HTTPS 版）
+#  操作手冊
 
 ## 如何將專案Clone至個人設備
 
