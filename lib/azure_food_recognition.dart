@@ -4,12 +4,10 @@ import 'package:flutter/foundation.dart';
 
 class AzureFoodRecognition {
   // 強烈建議改為以 --dart-define 或後端代理方式提供機密
-  static const String endpoint =
-      'https://myfoodrecognitionservice2025-prediction.cognitiveservices.azure.com/';
-  static const String apiKey =
-      '10LjrZrLURqQ6hMq2IbrHgzmnksSkquJZ2hvR25pAQimgcCSywOlJQQJ99BHACi0881XJ3w3AAAIACOGluzG';
+  static const String endpoint = 'ENDPOINT';
+  static const String apiKey = 'APIKEY';
   // 預設為你的 Custom Vision 專案與發佈名稱（分類模型）
-  static const String defaultProjectId = '86b97c38-8688-4038-a2bf-73507f0c6d12';
+  static const String defaultProjectId = 'ProjectId';
   static const String defaultPublishName = 'Iteration 1';
 
   final Dio _dio = Dio();
