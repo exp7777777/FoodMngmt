@@ -1,135 +1,181 @@
 import 'package:flutter/material.dart';
-import 'package:foodmngmt/foodmngmt_AccountRegister.dart';
-import 'package:foodmngmt/foodmngmt_AccountSettings.dart';
-import 'package:foodmngmt/foodmngmt_FoodManager.dart';
-import 'package:foodmngmt/foodmngmt_HomePage.dart';
-import 'main.dart';
+import 'dart:io';
+import 'package:provider/provider.dart';
 
-
-
-@override
-Widget build(BuildContext context) {
-  return MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: FoodMngmtPage(),
-  );
-}
+import 'pages_food_form.dart';
+import 'providers.dart';
+import 'pages_ai_menu.dart';
+import 'localization.dart';
 
 class FoodMngmtPage extends StatelessWidget {
-  final List<Map<String, String>> foodItems = [
-    {'name': '鮮乳優格(450g)', 'expiry': '2025.01.16', 'remaining': '23小時', 'image': 'assets/yogurt.png', 'quantity': '1件'},
-    {'name': '提拉米蘇', 'expiry': '2025.01.18', 'remaining': '3天', 'image': 'assets/tiramisu.png', 'quantity': '1件'},
-    {'name': '統一布丁', 'expiry': '2025.01.31', 'remaining': '17天', 'image': 'assets/pudding.png', 'quantity': '2件'},
-    {'name': '香蕉', 'expiry': '2025.02.03', 'remaining': '20天', 'image': 'assets/banana.png', 'quantity': '1件'},
-    {'name': '咖啡豆', 'expiry': '2025.04.16', 'remaining': '3個月', 'image': 'assets/coffee.png', 'quantity': '1件'},
+  final List<Map<String, String>> foodItems = const [
+    {
+      'name': '鮮乳優格(450g)',
+      'expiry': '2025.01.16',
+      'remaining': '23小時',
+      'quantity': '1件',
+    },
+    {
+      'name': '提拉米蘇',
+      'expiry': '2025.01.18',
+      'remaining': '3天',
+      'quantity': '1件',
+    },
+    {
+      'name': '統一布丁',
+      'expiry': '2025.01.31',
+      'remaining': '17天',
+      'quantity': '2件',
+    },
+    {
+      'name': '香蕉',
+      'expiry': '2025.02.03',
+      'remaining': '20天',
+      'quantity': '1件',
+    },
+    {
+      'name': '咖啡豆',
+      'expiry': '2025.04.16',
+      'remaining': '3個月',
+      'quantity': '1件',
+    },
   ];
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<FoodProvider>();
     return Scaffold(
       appBar: AppBar(
-        title: Text('食物總覽', style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: Icon(Icons.menu, color: Colors.orange),
+        title: Text(AppLocalizations.of(context).foodManagerTitle),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: () => provider.refresh(),
+          ),
+          IconButton(
+            icon: Icon(Icons.auto_awesome),
+            tooltip: AppLocalizations.of(context).aiMenuRecommendation,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AiMenuPage()),
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(8.0),
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: '搜尋',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: AppLocalizations.of(context).searchName,
+                      prefixIcon: Icon(Icons.search),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onChanged: (v) => provider.setFilter(keyword: v),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  label: Text(AppLocalizations.of(context).expiringIn3Days),
+                  selected: provider.onlyExpiring,
+                  onSelected: (v) => provider.setFilter(onlyExpiring: v),
+                ),
+              ],
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              itemCount: foodItems.length,
-              itemBuilder: (context, index) {
-                var item = foodItems[index];
-                return ListTile(
-                  leading: Image.asset(item['image']!, width: 50, height: 50),
-                  title: Text(item['name']!),
-                  subtitle: Text('${item['expiry']} 過期 (${item['remaining']})', style: TextStyle(color: Colors.red)),
-                  trailing: Text(item['quantity']!),
-                );
-              },
+            child: RefreshIndicator(
+              onRefresh: provider.refresh,
+              child: ListView.builder(
+                itemCount: provider.items.length,
+                itemBuilder: (context, index) {
+                  final item = provider.items[index];
+                  final days = item.daysLeft;
+                  final color =
+                      days < 0
+                          ? Colors.red
+                          : days <= 3
+                          ? Colors.orange
+                          : Colors.green;
+                  return MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: ListTile(
+                      leading: _buildLeadingImage(item.imagePath, color),
+                      title: Text(item.name),
+                      subtitle: Text(
+                        '${item.expiryDate.toString().split(' ').first} (${days >= 0 ? '$days ${AppLocalizations.of(context).days}' : '${AppLocalizations.of(context).expired} ${-days} ${AppLocalizations.of(context).days}'})',
+                      ),
+                      trailing: Text('${item.quantity}${item.unit}'),
+                      onTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => FoodFormPage(initial: item),
+                            ),
+                          ),
+                      onLongPress: () async {
+                        final ok = await showDialog<bool>(
+                          context: context,
+                          builder:
+                              (_) => AlertDialog(
+                                title: Text(
+                                  AppLocalizations.of(context).deleteConfirm,
+                                ),
+                                content: Text(
+                                  '${AppLocalizations.of(context).confirmDelete} ${item.name} ?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.pop(context, false),
+                                    child: Text(
+                                      AppLocalizations.of(context).cancel,
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.pop(context, true),
+                                    child: Text(
+                                      AppLocalizations.of(context).deleteItem,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                        );
+                        if (!context.mounted) return;
+                        if (ok == true) {
+                          await context.read<FoodProvider>().remove(item.id!);
+                        }
+                      },
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ],
       ),
-      //  使用 BottomNavigationBar 建置功能欄位
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed, // 保持所有按鈕可見
-        selectedItemColor: Color(0xFFFF914D), // 選中時的顏色
-        unselectedItemColor: Colors.grey, // 未選中時的顏色
-        showUnselectedLabels: true,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home, size: 30),
-            label: "首頁",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list, size: 30),
-            label: "清單",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_circle, size: 40, color: Color(0xFFFF914D)), // 中間按鈕
-            label: "新增",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today, size: 30),
-            label: "日曆",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart, size: 30),
-            label: "購物車",
-          ),
-        ],
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => HomePage()),
-            );
-            // 這裡可以加入 "首頁" 的功能
-          }
-          else if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => FoodMngmtPage()),
-            );
-            // 這裡可以加入 "食物管理" 的功能
-          }
-          else if (index == 2) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => AccountSettings()),
-            );
-            // 這裡可以加入 "新增" 的功能
-          }
-          else if (index == 3) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => AccountSettings()),
-            );
-            // 這裡可以加入 "日曆" 的功能
-          }
-          else if (index == 4) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => AccountSettings()),
-            );
-            // 這裡可以加入 "購物車" 的功能
-          }
-        },
-      ),
     );
   }
-}
 
+  Widget _buildLeadingImage(String? imagePath, Color fallbackColor) {
+    if (imagePath != null && imagePath.isNotEmpty) {
+      final file = File(imagePath);
+      if (file.existsSync()) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Image.file(file, width: 42, height: 42, fit: BoxFit.cover),
+        );
+      }
+    }
+    return Icon(Icons.fastfood, color: fallbackColor);
+  }
+}

@@ -1,35 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:foodmngmt/foodmngmt_AccountRegister.dart';
-import 'package:foodmngmt/foodmngmt_AccountSettings.dart';
-
-
+import 'package:provider/provider.dart';
+import 'providers.dart';
+import 'root_scaffold.dart';
 
 class AccoutLogin extends StatelessWidget {
   const AccoutLogin({super.key});
 
-  Widget _buildTextField(TextEditingController controller, String label, String note, {bool obscureText = false, String? hintText}) {
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    String note, {
+    bool obscureText = false,
+    String? hintText,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (label.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(bottom: 5), // 避免上框線被遮擋
-            child: Text(label, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-        Container(
-          decoration: BoxDecoration(
-            color: Color(0xFFE0E0E0), // ProfileAccountPage 的灰色無框樣式
-            borderRadius: BorderRadius.circular(10),
-          ),
-          padding: EdgeInsets.symmetric(horizontal: 12),
-          child: TextField(
-            controller: controller,
-            obscureText: obscureText,
-            decoration: InputDecoration(
-              hintText: hintText,
-              hintStyle: TextStyle(color: Colors.grey),
-              border: InputBorder.none,
+            padding: const EdgeInsets.only(bottom: 5),
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
+          ),
+        TextField(
+          controller: controller,
+          obscureText: obscureText,
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: TextStyle(color: Colors.grey),
           ),
         ),
         if (note.isNotEmpty)
@@ -85,13 +86,19 @@ class AccoutLogin extends StatelessWidget {
                         // 點擊後跳轉到 ProfileSetupPage
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => AccountRegister()),
+                          MaterialPageRoute(
+                            builder: (context) => AccountRegister(),
+                          ),
                         );
                       },
                       child: Text(
                         "註冊新帳號",
                         style: TextStyle(
-                          color: Colors.blue, // 設定顏色為藍色
+                          color:
+                              Theme.of(context).brightness == Brightness.dark
+                                  ? Colors
+                                      .white // 深色主題使用白色
+                                  : const Color(0xFFFFB366), // 淺色主題使用淺橘色
                           fontSize: 16,
                         ),
                       ),
@@ -99,9 +106,15 @@ class AccoutLogin extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 20),
-                  _buildTextField(emailController, "", "",hintText: "帳號/手機號碼"),
+                  _buildTextField(emailController, "", "", hintText: "帳號/手機號碼"),
                   const SizedBox(height: 10),
-                  _buildTextField(passwordController, "", "", hintText: "密碼",obscureText: true),
+                  _buildTextField(
+                    passwordController,
+                    "",
+                    "",
+                    hintText: "密碼",
+                    obscureText: true,
+                  ),
                   const SizedBox(height: 5),
                   Align(
                     alignment: Alignment.centerRight,
@@ -121,15 +134,37 @@ class AccoutLogin extends StatelessWidget {
                   const SizedBox(height: 20),
                   Center(
                     child: ElevatedButton(
-                      onPressed: () {
-                        // 登入按鈕點擊事件
+                      onPressed: () async {
+                        final err = await context.read<AuthProvider>().login(
+                          account: emailController.text,
+                          password: passwordController.text,
+                        );
+                        if (err != null) {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(err)));
+                          return;
+                        }
+                        if (!context.mounted) return;
+                        // 重新載入與帳號關聯的資料
+                        await context.read<UserProfileProvider>().load();
+                        await context.read<FoodProvider>().refresh();
+                        await context.read<ShoppingProvider>().refresh();
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const RootScaffold(),
+                          ),
+                        );
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Color(0xFFFF914D), // 設定按鈕顏色
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30), // 橢圓形按鈕
                         ),
-                        padding: EdgeInsets.symmetric(vertical: 10, horizontal: 30), // 調整大小
+                        padding: EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 30,
+                        ), // 調整大小
                       ),
                       child: Text(
                         "登入",
@@ -139,6 +174,20 @@ class AccoutLogin extends StatelessWidget {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Center(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AccountRegister(),
+                          ),
+                        );
+                      },
+                      child: Text("註冊", style: TextStyle(fontSize: 16)),
                     ),
                   ),
                 ],
