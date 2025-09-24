@@ -24,10 +24,6 @@
 
 5. 完成Clone
 
-## 如何進行專案 Commit & Push
-
-**步驟一：**
-
 # 實機測試
 ## iOS（macOS + Xcode）
 
