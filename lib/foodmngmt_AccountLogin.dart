@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 import 'providers.dart';
 import 'root_scaffold.dart';
 
-class AccoutLogin extends StatelessWidget {
-  const AccoutLogin({super.key});
+class AccountLogin extends StatelessWidget {
+  const AccountLogin({super.key});
 
   Widget _buildTextField(
     TextEditingController controller,
@@ -13,6 +13,7 @@ class AccoutLogin extends StatelessWidget {
     String note, {
     bool obscureText = false,
     String? hintText,
+    String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -25,13 +26,14 @@ class AccoutLogin extends StatelessWidget {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
-        TextField(
+        TextFormField(
           controller: controller,
           obscureText: obscureText,
           decoration: InputDecoration(
             hintText: hintText,
             hintStyle: TextStyle(color: Colors.grey),
           ),
+          validator: validator,
         ),
         if (note.isNotEmpty)
           Align(
@@ -52,6 +54,26 @@ class AccoutLogin extends StatelessWidget {
   Widget build(BuildContext context) {
     TextEditingController emailController = TextEditingController();
     TextEditingController passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    String? validateAccount(String? value) {
+      final v = (value ?? '').trim();
+      if (v.isEmpty) return '請輸入帳號/手機號碼';
+      final isPhone = RegExp(r'^\d{8,15}$').hasMatch(v);
+      final isId = RegExp(r'^[A-Za-z0-9_.-]{4,30}$').hasMatch(v);
+      if (!(isPhone || isId)) return '帳號需為 8-15 位數字或 4-30 位英數字';
+      return null;
+    }
+
+    String? validatePassword(String? value) {
+      final v = (value ?? '').trim();
+      if (v.isEmpty) return '請輸入密碼';
+      if (v.length < 6 || v.length > 12) return '密碼需為 6-12 字元';
+      final hasLetter = RegExp(r'[A-Za-z]').hasMatch(v);
+      final hasDigit = RegExp(r'\d').hasMatch(v);
+      if (!(hasLetter && hasDigit)) return '密碼需同時包含英文字母與數字';
+      return null;
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFFCF7EF), // 設定背景顏色
@@ -76,121 +98,109 @@ class AccoutLogin extends StatelessWidget {
                 color: Colors.white, // 白色背景
                 borderRadius: BorderRadius.circular(20), // 圓角
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: GestureDetector(
-                      onTap: () {
-                        // 點擊後跳轉到 ProfileSetupPage
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AccountRegister(),
+              child: Form(
+                key: formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
+                    _buildTextField(
+                      emailController,
+                      "",
+                      "",
+                      hintText: "帳號/手機號碼",
+                      validator: validateAccount,
+                    ),
+                    const SizedBox(height: 10),
+                    _buildTextField(
+                      passwordController,
+                      "",
+                      "",
+                      hintText: "密碼",
+                      obscureText: true,
+                      validator: validatePassword,
+                    ),
+                    const SizedBox(height: 5),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: GestureDetector(
+                        onTap: () {
+                          // 忘記密碼點擊事件
+                        },
+                        child: Text(
+                          "如忘記密碼可重新建立",
+                          style: TextStyle(
+                            color: Colors.red, // 設定顏色為紅色
+                            fontSize: 14,
                           ),
-                        );
-                      },
-                      child: Text(
-                        "註冊新帳號",
-                        style: TextStyle(
-                          color:
-                              Theme.of(context).brightness == Brightness.dark
-                                  ? Colors
-                                      .white // 深色主題使用白色
-                                  : const Color(0xFFFFB366), // 淺色主題使用淺橘色
-                          fontSize: 16,
                         ),
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-                  _buildTextField(emailController, "", "", hintText: "帳號/手機號碼"),
-                  const SizedBox(height: 10),
-                  _buildTextField(
-                    passwordController,
-                    "",
-                    "",
-                    hintText: "密碼",
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 5),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: () {
-                        // 忘記密碼點擊事件
-                      },
-                      child: Text(
-                        "如忘記密碼可重新建立",
-                        style: TextStyle(
-                          color: Colors.red, // 設定顏色為紅色
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Center(
-                    child: ElevatedButton(
-                      onPressed: () async {
-                        final err = await context.read<AuthProvider>().login(
-                          account: emailController.text,
-                          password: passwordController.text,
-                        );
-                        if (err != null) {
-                          ScaffoldMessenger.of(
+                    const SizedBox(height: 20),
+                    Center(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (!(formKey.currentState?.validate() ?? false)) {
+                            return;
+                          }
+                          final err = await context.read<AuthProvider>().login(
+                            account: emailController.text,
+                            password: passwordController.text,
+                          );
+                          if (err != null) {
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text(err)));
+                            return;
+                          }
+                          if (!context.mounted) return;
+                          // 重新載入與帳號關聯的資料
+                          await context.read<UserProfileProvider>().load();
+                          await context.read<FoodProvider>().refresh();
+                          await context.read<ShoppingProvider>().refresh();
+                          Navigator.pushReplacement(
                             context,
-                          ).showSnackBar(SnackBar(content: Text(err)));
-                          return;
-                        }
-                        if (!context.mounted) return;
-                        // 重新載入與帳號關聯的資料
-                        await context.read<UserProfileProvider>().load();
-                        await context.read<FoodProvider>().refresh();
-                        await context.read<ShoppingProvider>().refresh();
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const RootScaffold(),
+                            MaterialPageRoute(
+                              builder: (_) => const RootScaffold(),
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30), // 橢圓形按鈕
                           ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30), // 橢圓形按鈕
+                          padding: EdgeInsets.symmetric(
+                            vertical: 10,
+                            horizontal: 30,
+                          ), // 調整大小
                         ),
-                        padding: EdgeInsets.symmetric(
-                          vertical: 10,
-                          horizontal: 30,
-                        ), // 調整大小
-                      ),
-                      child: Text(
-                        "登入",
-                        style: TextStyle(
-                          color: Colors.white, // 設定文字顏色
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        child: Text(
+                          "登入",
+                          style: TextStyle(
+                            color: Colors.white, // 設定文字顏色
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Center(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AccountRegister(),
-                          ),
-                        );
-                      },
-                      child: Text("註冊", style: TextStyle(fontSize: 16)),
+                    const SizedBox(height: 10),
+                    Center(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AccountRegister(),
+                            ),
+                          );
+                        },
+                        child: Text("註冊", style: TextStyle(fontSize: 16)),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

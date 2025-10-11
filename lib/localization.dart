@@ -37,6 +37,27 @@ class AppLocalizations {
       locale.languageCode == 'en' ? 'Select Theme' : '選擇主題';
   String get selectLanguage =>
       locale.languageCode == 'en' ? 'Select Language' : '選擇語言';
+  String get invoiceCarrierSettings =>
+      locale.languageCode == 'en' ? 'Invoice Carrier Settings' : '發票載具設定';
+  String get bindCarrier =>
+      locale.languageCode == 'en' ? 'Bind Carrier' : '綁定載具';
+  String get unbindCarrier =>
+      locale.languageCode == 'en' ? 'Unbind Carrier' : '解除綁定';
+  String get syncInvoices =>
+      locale.languageCode == 'en' ? 'Sync Invoices' : '同步發票';
+  String get noCarriersBound =>
+      locale.languageCode == 'en' ? 'No carriers bound' : '尚未綁定載具';
+  String get carrierBound =>
+      locale.languageCode == 'en' ? 'Carrier Bound' : '載具已綁定';
+  String get enterCarrierId =>
+      locale.languageCode == 'en' ? 'Enter Carrier ID' : '輸入載具號碼';
+  String get carrierId => locale.languageCode == 'en' ? 'Carrier ID' : '載具號碼';
+  String get carrierType =>
+      locale.languageCode == 'en' ? 'Carrier Type' : '載具類型';
+  String get mobileCarrier =>
+      locale.languageCode == 'en' ? 'Mobile Carrier' : '手機載具';
+  String get cardCarrier =>
+      locale.languageCode == 'en' ? 'Card Carrier' : '卡片載具';
   String get lightTheme => locale.languageCode == 'en' ? 'Light Theme' : '淺色主題';
   String get darkTheme => locale.languageCode == 'en' ? 'Dark Theme' : '深色主題';
   String get systemTheme =>
@@ -57,6 +78,20 @@ class AppLocalizations {
   String get clearChecked =>
       locale.languageCode == 'en' ? 'Clear Checked' : '清除已勾選';
   String get noItems => locale.languageCode == 'en' ? 'No items' : '尚無項目';
+  String get locationReminders =>
+      locale.languageCode == 'en' ? 'Location Reminders' : '位置提醒';
+  String get nearbyStores =>
+      locale.languageCode == 'en' ? 'Nearby Stores' : '附近商店';
+  String get getLocation =>
+      locale.languageCode == 'en' ? 'Get Location' : '獲取位置';
+  String get locationPermissionDenied =>
+      locale.languageCode == 'en' ? 'Location permission denied' : '位置權限被拒絕';
+  String get locationServiceDisabled =>
+      locale.languageCode == 'en' ? 'Location service disabled' : '位置服務已停用';
+  String get tapToViewStores =>
+      locale.languageCode == 'en' ? 'Tap to view nearby stores' : '點擊查看附近商店';
+  String get storeType => locale.languageCode == 'en' ? 'Store Type' : '商店類型';
+  String get distance => locale.languageCode == 'en' ? 'Distance' : '距離';
 
   // 食材管理頁面
   String get searchName => locale.languageCode == 'en' ? 'Search Name' : '搜尋名稱';
@@ -70,7 +105,7 @@ class AppLocalizations {
   String get deleteItem => locale.languageCode == 'en' ? 'Delete' : '刪除';
   String get cancel => locale.languageCode == 'en' ? 'Cancel' : '取消';
   String get aiMenuRecommendation =>
-      locale.languageCode == 'en' ? 'AI Menu Recommendation' : 'AI 菜單推薦';
+      locale.languageCode == 'en' ? 'Leftovers Recipe' : '剩食譜';
   String get confirmDelete =>
       locale.languageCode == 'en' ? 'Confirm delete' : '確定刪除';
 
@@ -90,15 +125,24 @@ class AppLocalizations {
   String get category => locale.languageCode == 'en' ? 'Category' : '分類';
   String get expiryDateLabel =>
       locale.languageCode == 'en' ? 'Expiry Date' : '到期日';
+
+  // 食物分類選項
+  String get categoryDairy => locale.languageCode == 'en' ? 'Dairy' : '乳製品';
+  String get categoryDessert => locale.languageCode == 'en' ? 'Dessert' : '甜點';
+  String get categoryFruit => locale.languageCode == 'en' ? 'Fruit' : '水果';
+  String get categoryStaple => locale.languageCode == 'en' ? 'Staple' : '主食';
+  String get categoryBeverage =>
+      locale.languageCode == 'en' ? 'Beverage' : '飲料';
+  String get categoryOther => locale.languageCode == 'en' ? 'Other' : '其他';
   String get note => locale.languageCode == 'en' ? 'Note' : '備註';
   String get saveChanges =>
       locale.languageCode == 'en' ? 'Save Changes' : '儲存變更';
   String get addNew => locale.languageCode == 'en' ? 'Add' : '新增';
   String get piece => locale.languageCode == 'en' ? 'piece' : '件';
 
-  // AI 菜單頁面
+  // 剩食譜頁面
   String get aiMenuTitle =>
-      locale.languageCode == 'en' ? 'AI Menu Recommendation' : 'AI 菜單推薦';
+      locale.languageCode == 'en' ? 'Leftovers Recipe' : '剩食譜';
   String get allIngredients =>
       locale.languageCode == 'en' ? 'All ingredients available' : '材料齊全';
   String get missingItems =>
@@ -109,7 +153,7 @@ class AppLocalizations {
   String get missingIngredients =>
       locale.languageCode == 'en' ? 'Missing ingredients:' : '缺少材料：';
   String get addedToShoppingList =>
-      locale.languageCode == 'en' ? 'Added to shopping list' : '已加入項到購物清單';
+      locale.languageCode == 'en' ? 'Added to shopping list' : '已加入項目到購物清單';
   String get addMissingToShoppingList =>
       locale.languageCode == 'en' ? 'Add missing to shopping list' : '缺料加入購物清單';
 
@@ -117,7 +161,7 @@ class AppLocalizations {
   String get manualEntry =>
       locale.languageCode == 'en' ? 'Manual Entry' : '手動登錄';
   String get voiceEntry => locale.languageCode == 'en' ? 'Voice Entry' : '語音登錄';
-  String get scan => locale.languageCode == 'en' ? 'Scan' : '掃描';
+  String get scan => locale.languageCode == 'en' ? 'Identify' : '辨識';
   String get recognitionFailed =>
       locale.languageCode == 'en' ? 'Recognition failed:' : '辨識失敗：';
 

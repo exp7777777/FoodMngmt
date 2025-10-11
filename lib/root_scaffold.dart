@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-import 'azure_food_recognition.dart';
+import 'gemini_service.dart';
 import 'models.dart';
 
 import 'foodmngmt_FoodManager.dart';
@@ -124,59 +124,83 @@ class _AddActionSheet extends StatelessWidget {
                   },
                 ),
                 _ActionItem(
-                  icon: Icons.qr_code_scanner,
+                  icon: Icons.auto_awesome,
                   label: AppLocalizations.of(context).scan,
                   onTap: () async {
                     final rc = rootContext ?? context;
-                    Navigator.pop(context);
+                    Navigator.pop(context); // 先關閉底層表單
+
                     try {
                       final picker = ImagePicker();
                       final picked = await picker.pickImage(
                         source: ImageSource.gallery,
                         imageQuality: 85,
                       );
+
                       if (picked == null) return;
-                      final preds = await AzureFoodRecognition().predict(
-                        File(picked.path),
-                        detect: true,
-                      );
-                      String? tag;
-                      if (preds.isNotEmpty) {
-                        preds.sort(
-                          (a, b) => (b['probability'] as num).compareTo(
-                            a['probability'] as num,
+
+                      // 呼叫 Gemini 食物辨識
+                      final identifiedResult = await GeminiService.instance
+                          .identifyFood(File(picked.path));
+
+                      FoodItem? initialFoodItem;
+
+                      // 檢查辨識是否成功
+                      if (rc.mounted && identifiedResult['success'] == true) {
+                        final identifiedFoods =
+                            identifiedResult['items'] as List<dynamic>;
+
+                        if (identifiedFoods.isNotEmpty) {
+                          // 選擇第一個辨識結果
+                          final firstFood =
+                              identifiedFoods.first as Map<String, dynamic>;
+                          final foodName = firstFood['name'] as String;
+                          final quantity = firstFood['quantity'] as int;
+                          final unit = firstFood['unit'] as String;
+
+                          initialFoodItem = FoodItem(
+                            name: foodName,
+                            quantity: quantity,
+                            unit: unit,
+                            expiryDate: DateTime.now().add(
+                              const Duration(days: 7),
+                            ),
+                            category: FoodCategory.other, // 稍後會自動判斷
+                            note: null,
+                            imagePath: picked.path,
+                          );
+                        }
+                      }
+
+                      // 導航到食物表單頁面
+                      if (rc.mounted) {
+                        Navigator.push(
+                          rc,
+                          MaterialPageRoute(
+                            builder:
+                                (_) => FoodFormPage(initial: initialFoodItem),
                           ),
                         );
-                        tag = (preds.first['tagName'] as String?)?.trim();
                       }
-                      Navigator.push(
-                        rc,
-                        MaterialPageRoute(
-                          builder:
-                              (_) => FoodFormPage(
-                                initial: FoodItem(
-                                  name: tag == null || tag.isEmpty ? '' : tag,
-                                  quantity: 1,
-                                  unit: AppLocalizations.of(context).piece,
-                                  expiryDate: DateTime.now().add(
-                                    const Duration(days: 7),
-                                  ),
-                                  category: FoodCategory.other,
-                                  note: null,
-                                  imagePath: picked.path,
-                                ),
-                              ),
-                        ),
-                      );
                     } catch (e) {
-                      // 顯示錯誤提示
-                      ScaffoldMessenger.of(rc).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '${AppLocalizations.of(context).recognitionFailed}$e',
+                      // 顯示錯誤提示並導航到空表單
+                      if (rc.mounted) {
+                        ScaffoldMessenger.of(rc).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '${AppLocalizations.of(rc).recognitionFailed}$e',
+                            ),
                           ),
-                        ),
-                      );
+                        );
+
+                        // 導航到空表單讓用戶手動輸入
+                        Navigator.push(
+                          rc,
+                          MaterialPageRoute(
+                            builder: (_) => FoodFormPage(initial: null),
+                          ),
+                        );
+                      }
                     }
                   },
                 ),

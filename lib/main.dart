@@ -71,6 +71,6 @@ class Main extends StatelessWidget {
   Widget build(BuildContext context) {
     final authed = context.watch<AuthProvider>().isLoggedIn;
     if (authed) return const RootScaffold();
-    return const AccoutLogin();
+    return const AccountLogin();
   }
 }
