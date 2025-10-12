@@ -11,7 +11,7 @@ class AccountSettings extends StatefulWidget {
 class _AccountSettingsState extends State<AccountSettings> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nickname = TextEditingController();
-  final TextEditingController _account = TextEditingController();
+  final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirm = TextEditingController();
   // 移除未使用的欄位
@@ -21,9 +21,9 @@ class _AccountSettingsState extends State<AccountSettings> {
 
   void _syncFromProvider(UserProfileProvider p) {
     final nick = p.nickname ?? '';
-    final acc = p.account ?? '';
+    final email = p.email ?? '';
     if (_nickname.text != nick) _nickname.text = nick;
-    if (_account.text != acc) _account.text = acc;
+    if (_email.text != email) _email.text = email;
   }
 
   @override
@@ -50,7 +50,7 @@ class _AccountSettingsState extends State<AccountSettings> {
   @override
   void dispose() {
     _nickname.dispose();
-    _account.dispose();
+    _email.dispose();
     _password.dispose();
     _confirm.dispose();
     super.dispose();
@@ -99,12 +99,18 @@ class _AccountSettingsState extends State<AccountSettings> {
                       (v) => (v == null || v.trim().isEmpty) ? '請輸入暱稱' : null,
                 ),
                 SizedBox(height: 12),
-                _label('帳號'),
+                _label('電子郵件'),
                 TextFormField(
-                  controller: _account,
-                  decoration: _inputDecoration(hint: '帳號/手機號碼'),
-                  validator:
-                      (v) => (v == null || v.trim().isEmpty) ? '請輸入帳號' : null,
+                  controller: _email,
+                  decoration: _inputDecoration(hint: 'example@email.com'),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return '請輸入電子郵件';
+                    final emailRegex = RegExp(
+                      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+                    );
+                    if (!emailRegex.hasMatch(v.trim())) return '請輸入有效的電子郵件地址';
+                    return null;
+                  },
                 ),
                 SizedBox(height: 12),
                 _label('修改密碼'),
@@ -127,15 +133,12 @@ class _AccountSettingsState extends State<AccountSettings> {
                       if (!_formKey.currentState!.validate()) return;
                       await context.read<UserProfileProvider>().save(
                         nickname: _nickname.text.trim(),
-                        account: _account.text.trim(),
+                        email: _email.text.trim(),
                       );
-                      if (_oldPwd.text.isNotEmpty || _newPwd.text.isNotEmpty) {
+                      if (_newPwd.text.isNotEmpty) {
                         final msg = await context
                             .read<AuthProvider>()
-                            .changePassword(
-                              oldPassword: _oldPwd.text,
-                              newPassword: _newPwd.text,
-                            );
+                            .changePassword(_newPwd.text);
                         if (msg != null) {
                           ScaffoldMessenger.of(
                             context,

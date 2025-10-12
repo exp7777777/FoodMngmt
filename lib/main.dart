@@ -6,18 +6,24 @@ import 'repositories.dart';
 import 'root_scaffold.dart';
 import 'theme.dart';
 import 'foodmngmt_AccountSettings.dart';
-import 'foodmngmt_AccountLogin.dart';
 import 'localization.dart';
+import 'firebase_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 初始化 Firebase（FirebaseService 會處理平台相容性）
+  final firebaseService = FirebaseService.instance;
+  await firebaseService.init();
+
   // 初始化中文和英文的日期格式
   await initializeDateFormatting('zh_TW');
   await initializeDateFormatting('en');
   Intl.defaultLocale = 'zh_TW';
+
   runApp(const MyApp());
 }
 
@@ -29,16 +35,14 @@ class MyApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => FoodProvider(FoodRepository())..refresh(),
+          create: (_) => AuthProvider(AuthRepository())..loadSession(),
         ),
+        ChangeNotifierProvider(create: (_) => FoodProvider(FoodRepository())),
         ChangeNotifierProvider(
-          create: (_) => ShoppingProvider(ShoppingRepository())..refresh(),
+          create: (_) => ShoppingProvider(ShoppingRepository()),
         ),
         ChangeNotifierProvider(create: (_) => UserProfileProvider()..load()),
         ChangeNotifierProvider(create: (_) => AppSettingsProvider()..load()),
-        ChangeNotifierProvider(
-          create: (_) => AuthProvider(AuthRepository())..loadSession(),
-        ),
       ],
       child: Builder(
         builder: (context) {
@@ -69,8 +73,7 @@ class Main extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authed = context.watch<AuthProvider>().isLoggedIn;
-    if (authed) return const RootScaffold();
-    return const AccountLogin();
+    // 顯示主框架，初始頁面為食材管理頁面（保留工具列）
+    return const RootScaffold(initialIndex: 0);
   }
 }

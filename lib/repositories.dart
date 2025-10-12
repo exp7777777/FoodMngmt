@@ -1,176 +1,166 @@
-import 'package:sqflite/sqflite.dart';
-
-import 'db.dart';
+import 'firebase_service.dart';
 import 'models.dart';
 
 class FoodRepository {
-  Future<Database> get _db async => (await AppDatabase.instance.database);
+  final FirebaseService _firebaseService = FirebaseService.instance;
 
   Future<List<FoodItem>> getAll({
     String? keyword,
     bool? onlyExpiring,
-    String? account,
+    String? userId,
   }) async {
-    final db = await _db;
-    final where = <String>[];
-    final args = <Object?>[];
-    if (account != null && account.trim().isNotEmpty) {
-      where.add('account = ?');
-      args.add(account.trim());
-    }
-    if (keyword != null && keyword.trim().isNotEmpty) {
-      where.add('name LIKE ?');
-      args.add('%${keyword.trim()}%');
-    }
-    if (onlyExpiring == true) {
-      where.add('DATE(expiryDate) <= DATE(?)');
-      args.add(DateTime.now().add(Duration(days: 3)).toIso8601String());
-    }
-    final maps = await db.query(
-      'food_items',
-      where: where.isEmpty ? null : where.join(' AND '),
-      whereArgs: args.isEmpty ? null : args,
-      orderBy: 'expiryDate ASC',
-    );
-    return maps.map((e) => FoodItem.fromMap(e)).toList();
-  }
-
-  Future<int> insert(FoodItem item) async {
-    final db = await _db;
-    return db.insert('food_items', item.toMap());
-  }
-
-  Future<int> update(FoodItem item) async {
-    final db = await _db;
-    return db.update(
-      'food_items',
-      item.toMap(),
-      where: 'id=?',
-      whereArgs: [item.id],
+    return _firebaseService.getFoodItems(
+      keyword: keyword,
+      onlyExpiring: onlyExpiring,
+      userId: userId,
     );
   }
 
-  Future<int> delete(int id) async {
-    final db = await _db;
-    return db.delete('food_items', where: 'id=?', whereArgs: [id]);
+  Future<String> insert(FoodItem item) async {
+    // 確保食物項目有關聯的用戶
+    final itemWithUser = item.copyWith(account: _firebaseService.currentUserId);
+    return _firebaseService.addFoodItem(itemWithUser);
+  }
+
+  Future<void> update(FoodItem item) async {
+    await _firebaseService.updateFoodItem(item);
+  }
+
+  Future<void> delete(String id) async {
+    await _firebaseService.deleteFoodItem(id);
+  }
+
+  // 即時監聽方法（已停用，使用本地狀態更新）
+  Stream<List<FoodItem>> watchAll({
+    String? keyword,
+    bool? onlyExpiring,
+    String? userId,
+  }) {
+    return Stream.value([]); // 返回空串流，避免重複更新
   }
 }
 
 class ShoppingRepository {
-  Future<Database> get _db async => (await AppDatabase.instance.database);
+  final FirebaseService _firebaseService = FirebaseService.instance;
 
-  Future<List<ShoppingItem>> getAll({String? account}) async {
-    final db = await _db;
-    final maps = await db.query(
-      'shopping_items',
-      orderBy: 'id DESC',
-      where: account == null || account.trim().isEmpty ? null : 'account = ?',
-      whereArgs:
-          account == null || account.trim().isEmpty ? null : [account.trim()],
+  Future<List<ShoppingItem>> getAll({String? userId}) async {
+    return _firebaseService.getShoppingItems(userId: userId);
+  }
+
+  Future<String> insert(ShoppingItem item) async {
+    // 確保項目有正確的 account 欄位
+    final itemWithAccount = item.copyWith(
+      account: _firebaseService.currentUserId,
     );
-    return maps.map((e) => ShoppingItem.fromMap(e)).toList();
+    return _firebaseService.addShoppingItem(itemWithAccount);
   }
 
-  Future<int> insert(ShoppingItem item) async {
-    final db = await _db;
-    return db.insert('shopping_items', item.toMap());
+  Future<void> toggleChecked(String id, bool checked) async {
+    // 直接更新，不需要先查詢
+    final updatedItem = ShoppingItem(id: id, name: '', checked: checked);
+    await _firebaseService.updateShoppingItem(updatedItem);
   }
 
-  Future<int> toggleChecked(int id, bool checked) async {
-    final db = await _db;
-    return db.update(
-      'shopping_items',
-      {'checked': checked ? 1 : 0},
-      where: 'id=?',
-      whereArgs: [id],
-    );
+  Future<void> delete(String id) async {
+    await _firebaseService.deleteShoppingItem(id);
   }
 
-  Future<int> delete(int id) async {
-    final db = await _db;
-    return db.delete('shopping_items', where: 'id=?', whereArgs: [id]);
-  }
-
-  Future<int> clearChecked() async {
-    final db = await _db;
-    return db.delete('shopping_items', where: 'checked=1');
+  // 即時監聽方法（已停用，使用本地狀態更新）
+  Stream<List<ShoppingItem>> watchAll({String? userId}) {
+    return Stream.value([]); // 返回空串流，避免重複更新
   }
 }
 
 // UserProfileRepository 已移除（使用 AuthRepository/users 表）
 
 class AuthRepository {
-  Future<Database> get _db async => (await AppDatabase.instance.database);
+  final FirebaseService _firebaseService = FirebaseService.instance;
 
-  Future<int> register({
-    required String account,
+  Future<String?> register({
+    required String email,
     required String password,
     String? nickname,
   }) async {
-    final db = await _db;
-    return db.insert('users', {
-      'account': account.trim(),
-      'password': password.trim(),
-      'nickname': nickname?.trim(),
-    });
-  }
-
-  Future<Map<String, Object?>?> findByAccount(String account) async {
-    final db = await _db;
-    final rows = await db.query(
-      'users',
-      where: 'account=?',
-      whereArgs: [account.trim()],
-      limit: 1,
+    return _firebaseService.registerWithEmailAndPassword(
+      email: email,
+      password: password,
+      displayName: nickname,
     );
-    if (rows.isEmpty) return null;
-    return rows.first;
   }
 
-  Future<bool> verify({
+  Future<String?> signIn({
+    required String email,
+    required String password,
+  }) async {
+    return _firebaseService.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+  }
+
+  Future<void> signOut() async {
+    await _firebaseService.signOut();
+  }
+
+  Future<String?> resetPassword(String email) async {
+    return _firebaseService.resetPassword(email);
+  }
+
+  Future<String?> signInWithGoogle() async {
+    return _firebaseService.signInWithGoogle();
+  }
+
+  Future<String?> signInAnonymously() async {
+    return _firebaseService.signInAnonymously();
+  }
+
+  Future<bool> isSignedIn() async {
+    return _firebaseService.currentUser != null;
+  }
+
+  Future<String?> getCurrentUserEmail() async {
+    return _firebaseService.currentUserEmail;
+  }
+
+  Future<String?> changePassword(String newPassword) async {
+    return _firebaseService.changePassword(newPassword);
+  }
+
+  Future<String?> updateProfile({String? displayName, String? email}) async {
+    try {
+      await _firebaseService.updateUserProfile(
+        displayName: displayName,
+        email: email,
+      );
+      return null; // 成功
+    } catch (e) {
+      return '更新資料失敗：$e';
+    }
+  }
+
+  // 儲存使用者密碼雜湊（僅供額外驗證使用）
+  Future<void> saveUserPasswordHash(String userId, String password) async {
+    await _firebaseService.saveUserPasswordHash(userId, password);
+  }
+
+  // 驗證使用者密碼雜湊（僅供額外驗證使用）
+  Future<bool> verifyUserPasswordHash(String userId, String password) async {
+    return _firebaseService.verifyUserPasswordHash(userId, password);
+  }
+
+  // 為了向下相容，提供舊的方法名稱
+  Future<String?> login({
     required String account,
     required String password,
   }) async {
-    final row = await findByAccount(account);
-    if (row == null) return false;
-    return (row['password'] as String) == password.trim();
+    return signIn(email: account, password: password);
   }
 
-  Future<int> changePassword({
+  Future<String?> verify({
     required String account,
-    required String oldPassword,
-    required String newPassword,
+    required String password,
   }) async {
-    final db = await _db;
-    final ok = await verify(account: account, password: oldPassword);
-    if (!ok) return 0;
-    return db.update(
-      'users',
-      {'password': newPassword.trim()},
-      where: 'account=?',
-      whereArgs: [account.trim()],
-    );
-  }
-
-  Future<int> updateProfile({
-    required String account,
-    String? newAccount,
-    String? nickname,
-  }) async {
-    final db = await _db;
-    final values = <String, Object?>{};
-    if (newAccount != null && newAccount.trim().isNotEmpty) {
-      values['account'] = newAccount.trim();
-    }
-    if (nickname != null) {
-      values['nickname'] = nickname.trim();
-    }
-    if (values.isEmpty) return 0;
-    return db.update(
-      'users',
-      values,
-      where: 'account=?',
-      whereArgs: [account.trim()],
-    );
+    final result = await signIn(email: account, password: password);
+    return result; // 如果為 null 表示登入成功（驗證通過）
   }
 }

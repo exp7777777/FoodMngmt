@@ -294,17 +294,43 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                 ElevatedButton(
                   onPressed: () async {
                     if (_name.text.trim().isEmpty) return;
-                    await context.read<ShoppingProvider>().add(
-                      _name.text.trim(),
-                      amount:
-                          _amount.text.trim().isEmpty
-                              ? null
-                              : _amount.text.trim(),
-                    );
-                    _name.clear();
-                    _amount.clear();
-                    // 新增項目後重新生成推薦
-                    await _generateStoreRecommendations();
+
+                    // 檢查用戶是否登入
+                    final authProvider = context.read<AuthProvider>();
+                    if (!authProvider.isLoggedIn) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('請先登入才能新增購物項目'),
+                          duration: Duration(seconds: 3),
+                        ),
+                      );
+                      return;
+                    }
+
+                    // 防止重複點擊
+                    final shoppingProvider = context.read<ShoppingProvider>();
+                    if (shoppingProvider.isLoading) return;
+
+                    try {
+                      await shoppingProvider.add(
+                        _name.text.trim(),
+                        amount:
+                            _amount.text.trim().isEmpty
+                                ? null
+                                : _amount.text.trim(),
+                      );
+                      _name.clear();
+                      _amount.clear();
+                      // 新增項目後重新生成推薦
+                      await _generateStoreRecommendations();
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('新增失敗: $e'),
+                          duration: const Duration(seconds: 3),
+                        ),
+                      );
+                    }
                   },
                   child: Text(AppLocalizations.of(context).add),
                 ),
@@ -339,6 +365,33 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
             child: Consumer<ShoppingProvider>(
               builder: (context, sp, _) {
                 final items = sp.items;
+
+                if (sp.isLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (sp.errorMessage != null) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error_outline, size: 64, color: Colors.red),
+                        const SizedBox(height: 16),
+                        Text(
+                          sp.errorMessage!,
+                          style: TextStyle(color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => sp.refresh(),
+                          child: Text('重試'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
                 if (items.isEmpty) {
                   return Center(
                     child: Column(
@@ -404,7 +457,7 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                                     ),
                             onChanged: (v) async {
                               await context.read<ShoppingProvider>().toggle(
-                                it.id!,
+                                it.id ?? '',
                                 v ?? false,
                               );
                               // 更新推薦（已完成的項目不需要推薦）
@@ -420,7 +473,7 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                                 onPressed:
                                     () => context
                                         .read<ShoppingProvider>()
-                                        .remove(it.id!),
+                                        .remove(it.id ?? ''),
                               ),
                             ),
                           ),
@@ -435,11 +488,6 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
             ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.read<ShoppingProvider>().clearChecked(),
-        icon: Icon(Icons.cleaning_services_outlined),
-        label: Text(AppLocalizations.of(context).clearChecked),
       ),
     );
   }

@@ -3,7 +3,7 @@
 enum FoodCategory { dairy, dessert, fruit, staple, beverage, other }
 
 class FoodItem {
-  final int? id;
+  final String? id;
   final String name;
   final int quantity; // 單位數量
   final String unit; // 例如 件、g、ml
@@ -29,7 +29,7 @@ class FoodItem {
   int get daysLeft => expiryDate.difference(DateTime.now()).inDays;
 
   FoodItem copyWith({
-    int? id,
+    String? id,
     String? name,
     int? quantity,
     String? unit,
@@ -72,7 +72,7 @@ class FoodItem {
   };
 
   factory FoodItem.fromMap(Map<String, dynamic> map) => FoodItem(
-    id: map['id'] as int?,
+    id: map['id'] as String?,
     name: map['name'] as String,
     quantity: map['quantity'] as int,
     unit: map['unit'] as String,
@@ -85,7 +85,7 @@ class FoodItem {
 }
 
 class ShoppingItem {
-  final int? id;
+  final String? id;
   final String name;
   final String? amount; // 例如 125g, 2件
   final bool checked;
@@ -100,7 +100,7 @@ class ShoppingItem {
   });
 
   ShoppingItem copyWith({
-    int? id,
+    String? id,
     String? name,
     String? amount,
     bool? checked,
@@ -124,10 +124,19 @@ class ShoppingItem {
   };
 
   factory ShoppingItem.fromMap(Map<String, dynamic> map) => ShoppingItem(
-    id: map['id'] as int?,
+    id: map['id'] as String?,
     name: map['name'] as String,
     amount: map['amount'] as String?,
-    checked: (map['checked'] as int? ?? 0) == 1,
-    account: map['account'] as String?,
+    checked: _parseChecked(map['checked']),
+    account: map['account'] as String? ?? map['userId'] as String?,
   );
+
+  // 處理 checked 欄位的不同資料類型
+  static bool _parseChecked(dynamic value) {
+    if (value == null) return false;
+    if (value is bool) return value;
+    if (value is int) return value == 1;
+    if (value is String) return value == '1' || value.toLowerCase() == 'true';
+    return false;
+  }
 }

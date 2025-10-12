@@ -94,71 +94,142 @@ class FoodMngmtPage extends StatelessWidget {
           Expanded(
             child: RefreshIndicator(
               onRefresh: provider.refresh,
-              child: ListView.builder(
-                itemCount: provider.items.length,
-                itemBuilder: (context, index) {
-                  final item = provider.items[index];
-                  final days = item.daysLeft;
-                  final color =
-                      days < 0
-                          ? Colors.red
-                          : days <= 3
-                          ? Colors.orange
-                          : Colors.green;
-                  return MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: ListTile(
-                      leading: _buildLeadingImage(item.imagePath, color),
-                      title: Text(item.name),
-                      subtitle: Text(
-                        '${item.expiryDate.toString().split(' ').first} (${days >= 0 ? '$days ${AppLocalizations.of(context).days}' : '${AppLocalizations.of(context).expired} ${-days} ${AppLocalizations.of(context).days}'})',
-                      ),
-                      trailing: Text('${item.quantity}${item.unit}'),
-                      onTap:
-                          () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => FoodFormPage(initial: item),
+              child:
+                  provider.isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : provider.errorMessage != null
+                      ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 64,
+                              color: Colors.red,
                             ),
-                          ),
-                      onLongPress: () async {
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder:
-                              (_) => AlertDialog(
-                                title: Text(
-                                  AppLocalizations.of(context).deleteConfirm,
-                                ),
-                                content: Text(
-                                  '${AppLocalizations.of(context).confirmDelete} ${item.name} ?',
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed:
-                                        () => Navigator.pop(context, false),
-                                    child: Text(
-                                      AppLocalizations.of(context).cancel,
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed:
-                                        () => Navigator.pop(context, true),
-                                    child: Text(
-                                      AppLocalizations.of(context).deleteItem,
-                                    ),
-                                  ),
-                                ],
+                            const SizedBox(height: 16),
+                            Text(
+                              provider.errorMessage!,
+                              style: TextStyle(color: Colors.red),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: () => provider.refresh(),
+                              child: Text('重試'),
+                            ),
+                          ],
+                        ),
+                      )
+                      : provider.items.isEmpty
+                      ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.fastfood_outlined,
+                              size: 64,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '尚無食材資料',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '點擊下方 + 按鈕新增食材',
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 12,
                               ),
-                        );
-                        if (!context.mounted) return;
-                        if (ok == true) {
-                          await context.read<FoodProvider>().remove(item.id!);
-                        }
-                      },
-                    ),
-                  );
-                },
-              ),
+                            ),
+                          ],
+                        ),
+                      )
+                      : ListView.builder(
+                        itemCount: provider.items.length,
+                        itemBuilder: (context, index) {
+                          final item = provider.items[index];
+                          final days = item.daysLeft;
+                          final color =
+                              days < 0
+                                  ? Colors.red
+                                  : days <= 3
+                                  ? Colors.orange
+                                  : Colors.green;
+                          return MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: ListTile(
+                              leading: _buildLeadingImage(
+                                item.imagePath,
+                                color,
+                              ),
+                              title: Text(item.name),
+                              subtitle: Text(
+                                '${item.expiryDate.toString().split(' ').first} (${days >= 0 ? '$days ${AppLocalizations.of(context).days}' : '${AppLocalizations.of(context).expired} ${-days} ${AppLocalizations.of(context).days}'})',
+                              ),
+                              trailing: Text('${item.quantity}${item.unit}'),
+                              onTap:
+                                  () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (_) => FoodFormPage(initial: item),
+                                    ),
+                                  ),
+                              onLongPress: () async {
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder:
+                                      (_) => AlertDialog(
+                                        title: Text(
+                                          AppLocalizations.of(
+                                            context,
+                                          ).deleteConfirm,
+                                        ),
+                                        content: Text(
+                                          '${AppLocalizations.of(context).confirmDelete} ${item.name} ?',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed:
+                                                () => Navigator.pop(
+                                                  context,
+                                                  false,
+                                                ),
+                                            child: Text(
+                                              AppLocalizations.of(
+                                                context,
+                                              ).cancel,
+                                            ),
+                                          ),
+                                          TextButton(
+                                            onPressed:
+                                                () => Navigator.pop(
+                                                  context,
+                                                  true,
+                                                ),
+                                            child: Text(
+                                              AppLocalizations.of(
+                                                context,
+                                              ).deleteItem,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                );
+                                if (!context.mounted) return;
+                                if (ok == true) {
+                                  await context.read<FoodProvider>().remove(
+                                    item.id!,
+                                  );
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      ),
             ),
           ),
         ],

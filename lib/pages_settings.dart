@@ -5,6 +5,7 @@ import 'foodmngmt_AccountSettings.dart';
 import 'localization.dart';
 import 'foodmngmt_AccountLogin.dart';
 import 'invoice_service.dart';
+import 'models.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -280,7 +281,9 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
       _isLoading = true;
     });
 
-    final invoiceItems = await InvoiceService.instance.syncInvoices(carrierId);
+    final invoiceItems = await InvoiceService.instance.syncInvoicesForCarrier(
+      carrierId,
+    );
     final foodItems = await InvoiceService.instance.identifyFoodItems(
       invoiceItems,
     );
@@ -341,12 +344,43 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
     );
   }
 
-  void _addFoodItemsToInventory(List<Map<String, dynamic>> foodItems) {
-    // 這裡會將食物項目加入食材管理系統
-    // 由於這需要與現有的食材管理系統整合，這裡先顯示成功訊息
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('已將 ${foodItems.length} 項食物加入食材管理')));
+  Future<void> _addFoodItemsToInventory(
+    List<Map<String, dynamic>> foodItems,
+  ) async {
+    try {
+      final foodProvider = context.read<FoodProvider>();
+      final today = DateTime.now();
+
+      for (final foodItem in foodItems) {
+        final expiryDate = today.add(
+          Duration(days: foodItem['estimatedShelfLife'] as int),
+        );
+
+        final newFoodItem = FoodItem(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          name: foodItem['productName'] as String,
+          quantity: 1,
+          unit: foodItem['amount'] as String,
+          expiryDate: expiryDate,
+          category: FoodCategory.other,
+          account: 'invoice_sync',
+        );
+
+        await foodProvider.add(newFoodItem);
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已將 ${foodItems.length} 項食物加入食材管理')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加入食材管理失敗: $e')));
+      }
+    }
   }
 
   void _showMessage(String message) {

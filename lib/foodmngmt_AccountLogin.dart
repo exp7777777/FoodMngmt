@@ -1,11 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:foodmngmt/foodmngmt_AccountRegister.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'providers.dart';
 import 'root_scaffold.dart';
 
-class AccountLogin extends StatelessWidget {
+class AccountLogin extends StatefulWidget {
   const AccountLogin({super.key});
+
+  @override
+  _AccountLoginState createState() => _AccountLoginState();
+}
+
+class _AccountLoginState extends State<AccountLogin> {
+  TextEditingController emailController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
+  final formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedEmail = prefs.getString('session_email');
+    final savedPassword = prefs.getString('saved_password');
+
+    if (savedEmail != null) {
+      emailController.text = savedEmail;
+    }
+    if (savedPassword != null) {
+      passwordController.text = savedPassword;
+    }
+  }
 
   Widget _buildTextField(
     TextEditingController controller,
@@ -58,10 +87,14 @@ class AccountLogin extends StatelessWidget {
 
     String? validateAccount(String? value) {
       final v = (value ?? '').trim();
-      if (v.isEmpty) return '請輸入帳號/手機號碼';
+      if (v.isEmpty) return '請輸入帳號/手機號碼/電子郵件';
       final isPhone = RegExp(r'^\d{8,15}$').hasMatch(v);
       final isId = RegExp(r'^[A-Za-z0-9_.-]{4,30}$').hasMatch(v);
-      if (!(isPhone || isId)) return '帳號需為 8-15 位數字或 4-30 位英數字';
+      final isEmail = RegExp(
+        r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+      ).hasMatch(v);
+      if (!(isPhone || isId || isEmail))
+        return '帳號需為 8-15 位數字、4-30 位英數字或有效的電子郵件';
       return null;
     }
 
@@ -109,7 +142,7 @@ class AccountLogin extends StatelessWidget {
                       emailController,
                       "",
                       "",
-                      hintText: "帳號/手機號碼",
+                      hintText: "帳號/手機號碼/電子郵件",
                       validator: validateAccount,
                     ),
                     const SizedBox(height: 10),
@@ -145,7 +178,7 @@ class AccountLogin extends StatelessWidget {
                             return;
                           }
                           final err = await context.read<AuthProvider>().login(
-                            account: emailController.text,
+                            email: emailController.text,
                             password: passwordController.text,
                           );
                           if (err != null) {
@@ -156,6 +189,11 @@ class AccountLogin extends StatelessWidget {
                           }
                           if (!context.mounted) return;
                           // 重新載入與帳號關聯的資料
+                          // 等待 Firebase 狀態更新
+                          await Future.delayed(
+                            const Duration(milliseconds: 200),
+                          );
+
                           await context.read<UserProfileProvider>().load();
                           await context.read<FoodProvider>().refresh();
                           await context.read<ShoppingProvider>().refresh();
@@ -184,6 +222,97 @@ class AccountLogin extends StatelessWidget {
                           ),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 10),
+                    // Google 登入和匿名登入按鈕
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              final err =
+                                  await context
+                                      .read<AuthProvider>()
+                                      .signInWithGoogle();
+                              if (err != null) {
+                                ScaffoldMessenger.of(
+                                  context,
+                                ).showSnackBar(SnackBar(content: Text(err)));
+                                return;
+                              }
+                              if (!context.mounted) return;
+                              // 登入成功，重新載入資料並導航
+                              // 等待 Firebase 狀態更新
+                              await Future.delayed(
+                                const Duration(milliseconds: 200),
+                              );
+
+                              await context.read<UserProfileProvider>().load();
+                              await context.read<FoodProvider>().refresh();
+                              await context.read<ShoppingProvider>().refresh();
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const RootScaffold(),
+                                ),
+                              );
+                            },
+                            icon: Icon(Icons.login),
+                            label: Text("Google登入"),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                side: BorderSide(color: Colors.grey),
+                              ),
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final err =
+                                  await context
+                                      .read<AuthProvider>()
+                                      .signInAnonymously();
+                              if (err != null) {
+                                ScaffoldMessenger.of(
+                                  context,
+                                ).showSnackBar(SnackBar(content: Text(err)));
+                                return;
+                              }
+                              if (!context.mounted) return;
+                              // 登入成功，重新載入資料並導航
+                              // 等待 Firebase 狀態更新
+                              await Future.delayed(
+                                const Duration(milliseconds: 200),
+                              );
+
+                              await context.read<UserProfileProvider>().load();
+                              await context.read<FoodProvider>().refresh();
+                              await context.read<ShoppingProvider>().refresh();
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const RootScaffold(),
+                                ),
+                              );
+                            },
+                            icon: Icon(Icons.person_outline),
+                            label: Text("匿名登入"),
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 10),
                     Center(

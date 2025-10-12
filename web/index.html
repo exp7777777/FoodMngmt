@@ -31,6 +31,27 @@
 
   <title>foodmngmt</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  
+  <script>
+    // Firebase 配置
+    const firebaseConfig = {
+      apiKey: "AIzaSyC-rY3GqE3jAS6PUOfxqg5KNfmMv9hRB1Q",
+      authDomain: "foodmngmt-a8c19.firebaseapp.com",
+      projectId: "foodmngmt-a8c19",
+      storageBucket: "foodmngmt-a8c19.firebasestorage.app",
+      messagingSenderId: "320201170891",
+      appId: "1:320201170891:web:cf8b719942d1382936204e",
+      measurementId: "G-485WPW9V94"
+    };
+    
+    // 初始化 Firebase
+    firebase.initializeApp(firebaseConfig);
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

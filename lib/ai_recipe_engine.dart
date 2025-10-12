@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'models.dart';
-import 'gemini_service.dart';
+import 'integrated_recipe_service.dart';
 
 class RecipeSuggestion {
   final String title;
+  final String? originalTitle; // 原始英文標題
   final List<String> steps;
   final Map<String, String> requiredItems; // name -> amount
   final Map<String, String> missingItems; // name -> amount
@@ -12,6 +14,7 @@ class RecipeSuggestion {
 
   RecipeSuggestion({
     required this.title,
+    this.originalTitle,
     required this.steps,
     required this.requiredItems,
     required this.missingItems,
@@ -46,51 +49,29 @@ class RecipeEngine {
     },
   ];
 
-  // 使用 Gemini API 生成智慧食譜
+  // 使用整合食譜服務
   Future<List<RecipeSuggestion>> suggestWithGemini(
     List<FoodItem> inventory,
   ) async {
     try {
-      // 將 FoodItem 轉換為詳細的 Map 格式，包含到期日資訊
-      final inventoryMaps =
-          inventory
-              .map(
-                (item) => {
-                  'name': item.name,
-                  'quantity': item.quantity,
-                  'unit': item.unit,
-                  'expiryDate': item.expiryDate,
-                  'category': item.category.toString(),
-                },
-              )
-              .toList();
+      debugPrint('使用整合食譜服務，食材數量: ${inventory.length}');
 
-      final geminiRecipes = await GeminiService.instance.generateRecipes(
-        inventoryMaps,
-      );
+      // 使用新的整合食譜服務
+      final suggestions = await IntegratedRecipeService.instance
+          .generateRecipeSuggestions(inventory: inventory, numberOfRecipes: 10);
 
-      if (geminiRecipes.isNotEmpty) {
-        // 將 Map 轉換為 RecipeSuggestion 物件
-        return geminiRecipes.map((recipe) {
-          return RecipeSuggestion(
-            title: recipe['title'] ?? '未知食譜',
-            steps: List<String>.from(recipe['steps'] ?? []),
-            requiredItems: Map<String, String>.from(
-              recipe['requiredItems'] ?? {},
-            ),
-            missingItems: Map<String, String>.from(
-              recipe['missingItems'] ?? {},
-            ),
-            cookingTime: recipe['cookingTime'],
-            difficulty: recipe['difficulty'],
-          );
-        }).toList();
+      if (suggestions.isNotEmpty) {
+        debugPrint('成功獲得 ${suggestions.length} 個食譜推薦');
+        return suggestions;
+      } else {
+        debugPrint('整合食譜服務返回空清單，改用備用食譜');
       }
     } catch (e) {
-      print('Gemini API 失敗，改用備用食譜: $e');
+      debugPrint('整合食譜服務失敗，改用備用食譜: $e');
     }
 
-    // 如果 Gemini API 失敗，使用備用食譜
+    // 如果整合服務失敗，使用備用食譜
+    debugPrint('使用備用食譜');
     return _getFallbackRecipes(inventory);
   }
 
@@ -156,15 +137,13 @@ class RecipeEngine {
     final now = DateTime.now();
 
     for (final item in inventory) {
-      if (item.expiryDate != null) {
-        final daysUntilExpiry = item.expiryDate!.difference(now).inDays;
+      final daysUntilExpiry = item.expiryDate.difference(now).inDays;
 
-        // 如果食材即將到期（3天內）
-        if (daysUntilExpiry <= 3 && daysUntilExpiry >= 0) {
-          // 檢查食譜是否使用了這個食材
-          if (recipe.requiredItems.containsKey(item.name)) {
-            return true;
-          }
+      // 如果食材即將到期（3天內）
+      if (daysUntilExpiry <= 3 && daysUntilExpiry >= 0) {
+        // 檢查食譜是否使用了這個食材
+        if (recipe.requiredItems.containsKey(item.name)) {
+          return true;
         }
       }
     }
@@ -190,7 +169,7 @@ class RecipeEngine {
 
       return await suggestWithGemini(mockInventory);
     } catch (e) {
-      print('獲取食材食譜建議失敗: $e');
+      debugPrint('獲取食材食譜建議失敗: $e');
       return [];
     }
   }

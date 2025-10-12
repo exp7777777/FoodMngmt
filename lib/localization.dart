@@ -75,8 +75,6 @@ class AppLocalizations {
   String get quantityUnit =>
       locale.languageCode == 'en' ? 'Quantity/Unit' : '數量/單位';
   String get add => locale.languageCode == 'en' ? 'Add' : '新增';
-  String get clearChecked =>
-      locale.languageCode == 'en' ? 'Clear Checked' : '清除已勾選';
   String get noItems => locale.languageCode == 'en' ? 'No items' : '尚無項目';
   String get locationReminders =>
       locale.languageCode == 'en' ? 'Location Reminders' : '位置提醒';

@@ -13,7 +13,7 @@ class _AccountRegisterState extends State<AccountRegister> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
       TextEditingController();
-  final TextEditingController _accountController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   String? _validateNickname(String? value) {
@@ -24,12 +24,13 @@ class _AccountRegisterState extends State<AccountRegister> {
     return null;
   }
 
-  String? _validateAccount(String? value) {
+  String? _validateEmail(String? value) {
     final v = (value ?? '').trim();
-    if (v.isEmpty) return '請輸入帳號/手機號碼';
-    final isPhone = RegExp(r'^\d{8,15}$').hasMatch(v);
-    final isId = RegExp(r'^[A-Za-z0-9_.-]{4,30}$').hasMatch(v);
-    if (!(isPhone || isId)) return '帳號需為 8-15 位數字或 4-30 位英數字';
+    if (v.isEmpty) return '請輸入電子郵件';
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    );
+    if (!emailRegex.hasMatch(v)) return '請輸入有效的電子郵件地址';
     return null;
   }
 
@@ -94,7 +95,7 @@ class _AccountRegisterState extends State<AccountRegister> {
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            "帳號",
+                            "電子郵件",
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -103,12 +104,12 @@ class _AccountRegisterState extends State<AccountRegister> {
                         ),
                         SizedBox(height: 5),
                         _buildTextField(
-                          _accountController,
+                          _emailController,
                           "",
                           "",
-                          hintText: "帳號/手機號碼",
+                          hintText: "example@email.com",
                           obscureText: false,
-                          validator: _validateAccount,
+                          validator: _validateEmail,
                         ),
                         SizedBox(height: 10),
                         _buildTextField(
@@ -171,7 +172,7 @@ class _AccountRegisterState extends State<AccountRegister> {
                                 final err = await context
                                     .read<AuthProvider>()
                                     .register(
-                                      account: _accountController.text,
+                                      email: _emailController.text,
                                       password: _passwordController.text,
                                       nickname: _nicknameController.text,
                                     );

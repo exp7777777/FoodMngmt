@@ -167,11 +167,30 @@ class _FoodFormPageState extends State<FoodFormPage> {
                         imageQuality: 85,
                       );
                       if (picked != null) {
+                        debugPrint('選擇的圖片路徑: ${picked.path}');
                         setState(() => _imagePath = picked.path);
+
+                        // 檢查圖片檔案是否存在
+                        final imageFile = File(picked.path);
+                        if (!await imageFile.exists()) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('圖片檔案不存在，請重新選擇'),
+                                duration: Duration(seconds: 3),
+                              ),
+                            );
+                          }
+                          return;
+                        }
+
                         // 呼叫 Gemini Food Recognition 進行智慧辨識
                         try {
+                          debugPrint('開始辨識圖片...');
                           final identifiedResult = await GeminiService.instance
-                              .identifyFood(File(picked.path));
+                              .identifyFood(imageFile);
+
+                          debugPrint('辨識結果: $identifiedResult');
 
                           if (mounted && identifiedResult['success'] == true) {
                             final identifiedFoods =
@@ -225,6 +244,7 @@ class _FoodFormPageState extends State<FoodFormPage> {
                             );
                           }
                         } catch (e) {
+                          debugPrint('辨識失敗詳細錯誤: $e');
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
@@ -336,14 +356,13 @@ class _FoodFormPageState extends State<FoodFormPage> {
                     imagePath: _imagePath,
                   );
 
-                  // 檢查當前登入帳號
-                  final prefs = await SharedPreferences.getInstance();
-                  final account = prefs.getString('session_account');
-                  debugPrint('當前登入帳號: $account');
+                  // 檢查用戶是否登入
+                  final authProvider = context.read<AuthProvider>();
+                  debugPrint('用戶登入狀態: ${authProvider.isLoggedIn}');
+                  debugPrint('當前用戶ID: ${authProvider.currentUserId}');
                   debugPrint('FoodItem 資料: ${item.toMap()}');
 
-                  // 檢查用戶是否登入
-                  if (account == null || account.isEmpty) {
+                  if (!authProvider.isLoggedIn) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
