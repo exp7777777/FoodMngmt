@@ -11,7 +11,7 @@ class AppLocalizations {
 
   // 頁面標題
   String get calendarTitle =>
-      locale.languageCode == 'en' ? 'Expiry Calendar' : '到期日曆';
+      locale.languageCode == 'en' ? 'Expiry Calendar' : '提醒日曆';
   String get settingsTitle => locale.languageCode == 'en' ? 'Settings' : '設定';
   String get shoppingListTitle =>
       locale.languageCode == 'en' ? 'Shopping List' : '購物清單';
@@ -23,7 +23,7 @@ class AppLocalizations {
   // 導航標籤
   String get listTab => locale.languageCode == 'en' ? 'List' : '清單';
   String get calendarTab => locale.languageCode == 'en' ? 'Calendar' : '日曆';
-  String get shoppingTab => locale.languageCode == 'en' ? 'Shopping' : '購物車';
+  String get shoppingTab => locale.languageCode == 'en' ? 'Shopping' : '購物清單';
   String get settingsTab => locale.languageCode == 'en' ? 'Settings' : '設定';
 
   // 設定頁面
@@ -71,11 +71,11 @@ class AppLocalizations {
       locale.languageCode == 'en' ? 'Expiry Date: ' : '到期日：';
 
   // 購物清單頁面
-  String get itemName => locale.languageCode == 'en' ? 'Item Name' : '項目名稱';
+  String get itemName => locale.languageCode == 'en' ? 'Item Name' : '食材名稱';
   String get quantityUnit =>
       locale.languageCode == 'en' ? 'Quantity/Unit' : '數量/單位';
   String get add => locale.languageCode == 'en' ? 'Add' : '新增';
-  String get noItems => locale.languageCode == 'en' ? 'No items' : '尚無項目';
+  String get noItems => locale.languageCode == 'en' ? 'No items' : '尚無待購食材';
   String get locationReminders =>
       locale.languageCode == 'en' ? 'Location Reminders' : '位置提醒';
   String get nearbyStores =>
@@ -87,7 +87,9 @@ class AppLocalizations {
   String get locationServiceDisabled =>
       locale.languageCode == 'en' ? 'Location service disabled' : '位置服務已停用';
   String get tapToViewStores =>
-      locale.languageCode == 'en' ? 'Tap to view nearby stores' : '點擊查看附近商店';
+      locale.languageCode == 'en'
+          ? 'Tap to view nearby stores'
+          : '填寫上方欄位新增待購食材';
   String get storeType => locale.languageCode == 'en' ? 'Store Type' : '商店類型';
   String get distance => locale.languageCode == 'en' ? 'Distance' : '距離';
 
@@ -159,7 +161,7 @@ class AppLocalizations {
   String get manualEntry =>
       locale.languageCode == 'en' ? 'Manual Entry' : '手動登錄';
   String get voiceEntry => locale.languageCode == 'en' ? 'Voice Entry' : '語音登錄';
-  String get scan => locale.languageCode == 'en' ? 'Identify' : '辨識';
+  String get scan => locale.languageCode == 'en' ? 'Identify' : '影像辨識';
   String get recognitionFailed =>
       locale.languageCode == 'en' ? 'Recognition failed:' : '辨識失敗：';
 

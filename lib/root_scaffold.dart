@@ -124,7 +124,7 @@ class _AddActionSheet extends StatelessWidget {
                   },
                 ),
                 _ActionItem(
-                  icon: Icons.auto_awesome,
+                  icon: Icons.camera_alt,
                   label: AppLocalizations.of(context).scan,
                   onTap: () async {
                     final rc = rootContext ?? context;

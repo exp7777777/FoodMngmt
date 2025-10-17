@@ -341,25 +341,6 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
           // 位置提醒卡片
           _buildLocationReminderCard(),
 
-          // 購物清單區域標題
-          if (_currentPosition != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.shopping_cart, size: 20, color: Colors.green),
-                  const SizedBox(width: 8),
-                  Text(
-                    AppLocalizations.of(context).shoppingListTitle,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
           // 購物清單項目
           Expanded(
             child: Consumer<ShoppingProvider>(
@@ -391,7 +372,6 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                     ),
                   );
                 }
-
                 if (items.isEmpty) {
                   return Center(
                     child: Column(
@@ -421,7 +401,6 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                     ),
                   );
                 }
-
                 return ListView.builder(
                   itemCount: items.length,
                   itemBuilder: (context, index) {

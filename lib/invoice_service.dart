@@ -234,22 +234,22 @@ class InvoiceService {
       final today = DateTime.now();
       final todayKey = '${today.year}-${today.month}-${today.day}';
 
-      // 檢查今天是否已經同步過
+      // 記錄同步時間（但不阻止多次同步）
       final prefs = await SharedPreferences.getInstance();
       final lastSyncDate = prefs.getString('last_invoice_sync_date_$carrierId');
+      final lastSyncTime = prefs.getString('last_invoice_sync_time_$carrierId');
 
-      if (lastSyncDate == todayKey) {
-        debugPrint('載具 $carrierId 今天已經同步過發票，跳過');
-        return [];
-      }
+      debugPrint('載具 $carrierId 上次同步時間: $lastSyncDate $lastSyncTime');
 
-      // 生成隨機商品
-      final random = Random();
+      // 基於日期生成固定的商品組合（每天都一樣）
+      final dateSeed = today.year * 10000 + today.month * 100 + today.day;
+      final random = Random(dateSeed);
       final itemCount = random.nextInt(5) + 3; // 3-7個商品
       final selectedProducts = <Map<String, dynamic>>[];
 
-      // 隨機選擇商品
-      final shuffledProducts = List.from(_fakeProducts)..shuffle(random);
+      // 使用固定種子確保每天生成的商品組合相同
+      final seededRandom = Random(dateSeed);
+      final shuffledProducts = List.from(_fakeProducts)..shuffle(seededRandom);
       for (int i = 0; i < itemCount && i < shuffledProducts.length; i++) {
         selectedProducts.add(shuffledProducts[i]);
       }
@@ -268,8 +268,12 @@ class InvoiceService {
         invoiceItems.add(invoiceItem);
       }
 
-      // 儲存同步日期
+      // 儲存同步時間（詳細記錄）
       await prefs.setString('last_invoice_sync_date_$carrierId', todayKey);
+      await prefs.setString(
+        'last_invoice_sync_time_$carrierId',
+        '${today.hour}:${today.minute}:${today.second}',
+      );
 
       debugPrint('載具 $carrierId 發票同步完成，生成 ${invoiceItems.length} 個商品');
       return invoiceItems;

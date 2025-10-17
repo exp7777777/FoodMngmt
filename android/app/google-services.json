@@ -12,7 +12,12 @@
           "package_name": "com.example.foodmngmt"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "320201170891-r3iba7ks9ccnapjb879qafoccr1rgvks.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB5MvTMhfRu-CXTuQmi05NSDb2zLjZKSYo"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "320201170891-r3iba7ks9ccnapjb879qafoccr1rgvks.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "320201170891-h4pr72s58efkdmqh6uluggb1cfkijsb1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.foodmngmt"
+              }
+            }
+          ]
         }
       }
     }

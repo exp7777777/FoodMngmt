@@ -229,43 +229,21 @@ class _AccountLoginState extends State<AccountLogin> {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              final err =
-                                  await context
-                                      .read<AuthProvider>()
-                                      .signInWithGoogle();
-                              if (err != null) {
-                                ScaffoldMessenger.of(
-                                  context,
-                                ).showSnackBar(SnackBar(content: Text(err)));
-                                return;
-                              }
-                              if (!context.mounted) return;
-                              // 登入成功，重新載入資料並導航
-                              // 等待 Firebase 狀態更新
-                              await Future.delayed(
-                                const Duration(milliseconds: 200),
-                              );
-
-                              await context.read<UserProfileProvider>().load();
-                              await context.read<FoodProvider>().refresh();
-                              await context.read<ShoppingProvider>().refresh();
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const RootScaffold(),
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              // 顯示功能暫時不可用的訊息
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Google 登入功能暫時不可用，請使用其他登入方式'),
+                                  duration: Duration(seconds: 3),
                                 ),
                               );
                             },
                             icon: Icon(Icons.login),
                             label: Text("Google登入"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.black,
+                            style: OutlinedButton.styleFrom(
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(20),
-                                side: BorderSide(color: Colors.grey),
                               ),
                               padding: EdgeInsets.symmetric(vertical: 8),
                             ),

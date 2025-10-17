@@ -65,6 +65,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '320201170891',
     projectId: 'foodmngmt-a8c19',
     storageBucket: 'foodmngmt-a8c19.firebasestorage.app',
+    iosClientId: '320201170891-h4pr72s58efkdmqh6uluggb1cfkijsb1.apps.googleusercontent.com',
     iosBundleId: 'com.example.foodmngmt',
   );
 
@@ -74,6 +75,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '320201170891',
     projectId: 'foodmngmt-a8c19',
     storageBucket: 'foodmngmt-a8c19.firebasestorage.app',
+    iosClientId: '320201170891-h4pr72s58efkdmqh6uluggb1cfkijsb1.apps.googleusercontent.com',
     iosBundleId: 'com.example.foodmngmt',
   );
 
