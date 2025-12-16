@@ -158,6 +158,62 @@ service firebase.storage {
 
 Firebase 預設支援離線功能，當網路連線恢復時會自動同步資料。
 
+## 🔔 設定 Firebase Cloud Messaging (FCM)
+
+1. **啟用服務**
+   - 在 Firebase Console 左側選單選擇「Cloud Messaging」
+   - 確認專案已啟用 Cloud Messaging API，並記下 Server key 與 Sender ID
+
+2. **Android 設定**
+   - `android/app/src/main/AndroidManifest.xml` 已加入 `POST_NOTIFICATIONS` 權限與預設通知頻道，可依需求調整 icon 與顏色
+   - 確保 `google-services.json` 仍放在 `android/app/`，如需更換專案記得重新下載
+
+3. **iOS / macOS 設定**
+   - 於 Apple Developer 帳號建立 APNs Auth Key（.p8）並上傳到 Firebase Console
+   - 在 Xcode `Signing & Capabilities` 新增 `Push Notifications`、`Background Modes` (Remote notifications)
+   - AppDelegate 已註冊 `UNUserNotificationCenter`，若需要擴充請保留現有設定
+
+4. **Web 設定**
+   - `web/firebase-messaging-sw.js` 為服務工作器檔案，佈署 Web 版本時務必一併上傳
+   - 前往 Firebase Console > Cloud Messaging > Web Push certificates，產生 VAPID Key
+   - 執行 Web 構建時需加入 `--dart-define=FOODMNGMT_WEB_PUSH_KEY=<VAPID Key>`，否則 Web 端將跳過 Token 產生
+
+5. **伺服端推播**
+   - 呼叫 `https://fcm.googleapis.com/v1/projects/<projectId>/messages:send` 或使用 Legacy HTTP API
+   - Authorization header 可使用 OAuth 2.0 存取權杖或 Server key
+   - 範例 payload：
+     ```json
+     {
+       "message": {
+         "topic": "food-expiry",
+         "notification": {
+           "title": "雞胸肉即將過期",
+           "body": "剩 2 天，記得優先烹調"
+         },
+         "data": {
+           "type": "expiry",
+           "foodId": "abc123"
+         }
+       }
+     }
+     ```
+
+6. **裝置 Token 管理**
+   - App 內的 `PushNotificationService` 會在登入後自動將 Token 儲存於 `users/{uid}/deviceTokens`
+   - 登出時會清除對應 Token，避免舊用戶持續收到通知
+   - 可依據 `deviceTokens` 子集合或 `latestFcmToken` 欄位進行個別推播
+
+## ⏰ 本機到期提醒
+
+1. App 啟動並登入後，`PushNotificationService` 會同步所有食材資料，在到期日前一日（預設 09:00）排程最多 10 則本機通知。
+2. 若排程時間已過，系統會自動改為 1 分鐘後發出，以方便測試。
+3. 測試方式：
+   - 新增一筆到期日在未來 1～3 天內的食材
+   - 等待 1 分鐘（或到達排程時間），就會看到系統通知「xxx 即將到期」
+   - 登出或刪除該食材後，通知會被取消（可在系統設定的排程通知列表中確認）
+4. 由於此提醒依賴本機排程，僅 Android / iOS / macOS 生效，Web 端會略過。
+5. 若裝置所在區域非台灣，可在執行 `flutter run` 或建置時加上 `--dart-define=FOODMNGMT_TZ=<IANA Timezone>`（例如 `Asia/Tokyo`）以調整排程時區。
+
 ## 🚨 常見問題
 
 1. **初始化錯誤**：檢查 firebase_options.dart 中的設定值

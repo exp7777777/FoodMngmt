@@ -173,7 +173,11 @@ class InvoiceService {
       // 轉換為 FoodItem
       final foodItems = <FoodItem>[];
       for (final product in selectedProducts) {
-        final expiryDate = today.add(Duration(days: product['expiryDays']));
+        final purchaseDate = today;
+        final expiryDate = purchaseDate.add(
+          Duration(days: product['expiryDays']),
+        );
+        final shelfLifeDays = expiryDate.difference(purchaseDate).inDays;
         final foodItem = FoodItem(
           id:
               DateTime.now().millisecondsSinceEpoch.toString() +
@@ -181,8 +185,12 @@ class InvoiceService {
           name: product['name'],
           quantity: 1,
           unit: product['amount'],
+          purchaseDate: purchaseDate,
           expiryDate: expiryDate,
+          shelfLifeDays: shelfLifeDays > 0 ? shelfLifeDays : 1,
           category: FoodCategory.other,
+          storageLocation: StorageLocation.refrigerated, // 發票同步的商品預設冷藏
+          isOpened: false, // 發票同步的商品預設未開封
           account: 'invoice_sync', // 標記為發票同步的商品
         );
         foodItems.add(foodItem);

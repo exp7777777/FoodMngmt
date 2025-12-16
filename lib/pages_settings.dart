@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers.dart';
@@ -6,7 +7,6 @@ import 'localization.dart';
 import 'foodmngmt_AccountLogin.dart';
 import 'invoice_service.dart';
 import 'models.dart';
-import 'root_scaffold.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -210,6 +210,12 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
     _loadBoundCarriers();
   }
 
+  @override
+  void dispose() {
+    _carrierIdController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadBoundCarriers() async {
     setState(() {
       _isLoading = true;
@@ -293,24 +299,11 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
         await Future.delayed(Duration(milliseconds: 2000 - elapsed));
       }
 
-      // 在try區塊內處理後續邏輯
-      if (foodItems.isNotEmpty) {
-        // 先將食物項目加入食材管理
-        await _addFoodItemsToInventory(foodItems);
-
-        // 顯示發票同步成功的提示
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('發票同步完成！已將 ${foodItems.length} 項食材加入食材管理'),
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      } else {
-        if (context.mounted) {
-          _showMessage('發票同步完成，但沒有找到食物項目，或發票資料為空');
-        }
+      // 如果有食物項目，顯示確認對話框
+      if (foodItems.isNotEmpty && context.mounted) {
+        _showFoodItemsConfirmationDialog(foodItems);
+      } else if (context.mounted) {
+        _showMessage('發票同步完成，但沒有找到食物項目，或發票資料為空');
       }
     } catch (e) {
       if (context.mounted) {
@@ -323,29 +316,40 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
     }
   }
 
-  void _showFoodItemsDialog(List<Map<String, dynamic>> foodItems) {
+  void _showFoodItemsConfirmationDialog(List<Map<String, dynamic>> foodItems) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text(AppLocalizations.of(context).syncInvoices),
+          title: Text('發票同步結果'),
           content: SizedBox(
             width: double.maxFinite,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: foodItems.length,
-              itemBuilder: (context, index) {
-                final item = foodItems[index];
-                return Card(
-                  child: ListTile(
-                    title: Text(item['productName'] ?? '未知產品'),
-                    subtitle: Text(
-                      '${AppLocalizations.of(context).category}: ${item['category']}',
-                    ),
-                    trailing: Text('${item['estimatedShelfLife']} 天'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('發現 ${foodItems.length} 項食物項目：'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 200,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: foodItems.length,
+                    itemBuilder: (context, index) {
+                      final item = foodItems[index];
+                      return Card(
+                        child: ListTile(
+                          title: Text(item['productName'] ?? '未知產品'),
+                          subtitle: Text(
+                            '${item['category']} - ${item['amount']} (${item['estimatedShelfLife']} 天)',
+                          ),
+                          dense: true,
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
+                ),
+              ],
             ),
           ),
           actions: [
@@ -354,11 +358,27 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
               child: const Text('取消'),
             ),
             ElevatedButton(
-              onPressed: () {
-                // 這裡會將辨識的食物項目加入食材管理
-                _addFoodItemsToInventory(foodItems);
+              onPressed: () async {
+                // 加入食材管理並顯示結果
+                final addedCount = await _addFoodItemsToInventory(foodItems);
+
                 Navigator.of(context).pop();
-                Navigator.of(context).pop();
+
+                if (context.mounted) {
+                  String message = '成功新增 $addedCount 項食物到食材管理！';
+                  final skippedCount = foodItems.length - addedCount;
+                  if (skippedCount > 0) {
+                    message += '\n跳過 $skippedCount 項已存在的項目';
+                  }
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(message),
+                      duration: const Duration(seconds: 4),
+                      backgroundColor: Colors.green[600],
+                    ),
+                  );
+                }
               },
               child: const Text('加入食材管理'),
             ),
@@ -368,12 +388,16 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
     );
   }
 
-  Future<void> _addFoodItemsToInventory(
+  Future<int> _addFoodItemsToInventory(
     List<Map<String, dynamic>> foodItems,
   ) async {
+    int addedCount = 0;
+
     try {
       final foodProvider = context.read<FoodProvider>();
-      final today = DateTime.now();
+      final now = DateTime.now();
+      final random = Random();
+      final lastDayOfMonth = DateTime(now.year, now.month + 1, 0).day;
 
       // 獲取當前食材管理中的所有食物項目，用於檢查重複
       await foodProvider.refresh(); // 確保資料是最新的
@@ -381,21 +405,22 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
       final existingFoodNames =
           existingFoodItems.map((item) => item.name.toLowerCase()).toSet();
 
-      int addedCount = 0;
-      int skippedCount = 0;
-
       for (final foodItem in foodItems) {
         final productName = foodItem['productName'] as String;
         final productNameLower = productName.toLowerCase();
 
         // 檢查是否已經存在相同名稱的食物項目
         if (existingFoodNames.contains(productNameLower)) {
-          skippedCount++;
           debugPrint('跳過已存在的食物項目: $productName');
           continue;
         }
 
-        final expiryDate = today.add(
+        // 為每個食材生成不同的隨機購買日期（當月1號到當月最後一天之間）
+        final randomDay =
+            random.nextInt(lastDayOfMonth) + 1; // 1 到 lastDayOfMonth
+        final randomPurchaseDate = DateTime(now.year, now.month, randomDay);
+
+        final expiryDate = randomPurchaseDate.add(
           Duration(days: foodItem['estimatedShelfLife'] as int),
         );
 
@@ -406,8 +431,15 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
           name: productName,
           quantity: 1,
           unit: foodItem['amount'] as String,
+          purchaseDate: randomPurchaseDate,
           expiryDate: expiryDate,
+          shelfLifeDays: expiryDate
+              .difference(randomPurchaseDate)
+              .inDays
+              .clamp(1, 3650),
           category: FoodCategory.other,
+          storageLocation: StorageLocation.refrigerated, // 預設冷藏
+          isOpened: false, // 發票同步的項目預設未開封
           account: 'invoice_sync',
         );
 
@@ -421,6 +453,8 @@ class _InvoiceCarrierDialogState extends State<InvoiceCarrierDialog> {
         ).showSnackBar(SnackBar(content: Text('加入食材管理失敗: $e')));
       }
     }
+
+    return addedCount;
   }
 
   void _showMessage(String message) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -686,36 +687,180 @@ $ingredientDetails
   }
 
   // 辨識食物圖片
+  // 重試配置
+  static const int _maxRetries = 3;
+  static const Duration _initialRetryDelay = Duration(seconds: 2);
+  static const double _retryBackoffMultiplier = 2.0;
+
+  /// 帶重試機制的食物辨識
   Future<Map<String, dynamic>> identifyFood(File imageFile) async {
+    int retryCount = 0;
+    Duration currentDelay = _initialRetryDelay;
+
+    while (retryCount <= _maxRetries) {
+      try {
+        debugPrint(
+          '開始辨識圖片 (嘗試 ${retryCount + 1}/${_maxRetries + 1}): ${imageFile.path}',
+        );
+
+        final result = await _identifyFoodWithTimeout(imageFile);
+        return result;
+      } catch (e) {
+        final errorString = e.toString();
+        debugPrint(
+          '食物辨識失敗 (嘗試 ${retryCount + 1}/${_maxRetries + 1}): $errorString',
+        );
+
+        // 檢查是否為可重試的錯誤
+        final isRetryableError = _isRetryableError(errorString);
+
+        if (isRetryableError && retryCount < _maxRetries) {
+          retryCount++;
+          debugPrint('等待 ${currentDelay.inSeconds} 秒後重試...');
+          await Future.delayed(currentDelay);
+          // 指數退避
+          currentDelay = Duration(
+            milliseconds:
+                (currentDelay.inMilliseconds * _retryBackoffMultiplier).toInt(),
+          );
+        } else {
+          // 不可重試的錯誤或已達最大重試次數
+          debugPrint('無法重試或已達最大重試次數，返回錯誤');
+          return {
+            'success': false,
+            'items': [],
+            'error': _formatErrorMessage(errorString),
+          };
+        }
+      }
+    }
+
+    // 理論上不會到這裡，但為了安全起見
+    return {'success': false, 'items': [], 'error': '達到最大重試次數，辨識失敗'};
+  }
+
+  /// 檢查錯誤是否可以重試
+  bool _isRetryableError(String errorString) {
+    // 檢查是否為配額限制錯誤（不應該立即重試）
+    if (errorString.contains('quota') ||
+        errorString.contains('Quota exceeded') ||
+        errorString.contains('exceeded your current quota')) {
+      return false; // 配額錯誤不重試，需要等待或升級
+    }
+
+    return errorString.contains('503') || // 服務過載
+        errorString.contains('UNAVAILABLE') || // 服務不可用
+        errorString.contains('429') || // 請求過多
+        errorString.contains('RESOURCE_EXHAUSTED') || // 資源耗盡
+        errorString.contains('500') || // 伺服器錯誤
+        errorString.contains('INTERNAL') || // 內部錯誤
+        errorString.contains('DEADLINE_EXCEEDED') || // 超時
+        errorString.contains('timeout'); // 超時
+  }
+
+  /// 格式化錯誤訊息，讓使用者更容易理解
+  String _formatErrorMessage(String errorString) {
+    // 配額限制錯誤
+    if (errorString.contains('quota') ||
+        errorString.contains('Quota exceeded') ||
+        errorString.contains('exceeded your current quota')) {
+      // 嘗試提取等待時間
+      final retryMatch = RegExp(
+        r'retry in (\d+\.?\d*)',
+      ).firstMatch(errorString);
+      if (retryMatch != null) {
+        final seconds = double.tryParse(retryMatch.group(1) ?? '0') ?? 0;
+        final waitTime =
+            seconds > 60
+                ? '${(seconds / 60).ceil()} 分鐘'
+                : '${seconds.ceil()} 秒';
+        return 'API 使用額度已達上限，請等待 $waitTime 後再試，或升級至付費方案';
+      }
+      return 'API 使用額度已達上限，請稍後再試或升級至付費方案';
+    }
+
+    // 其他錯誤類型
+    if (errorString.contains('503') || errorString.contains('UNAVAILABLE')) {
+      return '服務暫時過載，請稍後再試';
+    } else if (errorString.contains('429') ||
+        errorString.contains('RESOURCE_EXHAUSTED')) {
+      return '請求次數過多，請稍後再試';
+    } else if (errorString.contains('DEADLINE_EXCEEDED') ||
+        errorString.contains('timeout')) {
+      return '請求超時，請檢查網路連線';
+    } else if (errorString.contains('500') ||
+        errorString.contains('INTERNAL')) {
+      return '伺服器發生錯誤，請稍後再試';
+    } else {
+      return '辨識失敗：$errorString';
+    }
+  }
+
+  /// 帶超時控制的食物辨識
+  Future<Map<String, dynamic>> _identifyFoodWithTimeout(File imageFile) async {
+    return await _identifyFoodCore(imageFile).timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        debugPrint('辨識請求超時');
+        throw TimeoutException('辨識請求超時，請檢查網路連線');
+      },
+    );
+  }
+
+  /// 核心辨識邏輯
+  Future<Map<String, dynamic>> _identifyFoodCore(File imageFile) async {
     try {
-      debugPrint('開始辨識圖片: ${imageFile.path}');
       final imageBytes = await imageFile.readAsBytes();
       debugPrint('圖片大小: ${imageBytes.length} bytes');
 
+      // 檢查圖片大小，如果過大則壓縮
+      if (imageBytes.length > 4 * 1024 * 1024) {
+        debugPrint('圖片過大，建議壓縮後再辨識');
+        return {
+          'success': false,
+          'items': [],
+          'error': '圖片檔案過大（超過4MB），請選擇較小的圖片',
+        };
+      }
+
       final prompt = '''
-請仔細觀察這張圖片，辨識出所有可見的食物食材。請用繁體中文描述所有你能辨識出的食物名稱。
+請仔細觀察這張圖片，辨識出所有可見的食物食材，並分析每個食物的分類。
 
 要求：
 1. 只辨識食物相關的物品，不要包含容器、餐具、包裝或其他非食物物品
 2. 請用準確的繁體中文食物名稱描述
 3. 如果有多個相同食物，請列出具體數量或規格（如：香蕉 2根、牛奶 500ml）
 4. 優先辨識主要的食物項目，忽略背景或不相關的物品
-5. 如果無法確定數量，請只寫食物名稱
+5. 為每個食物標註所屬分類（蔬菜、水果、肉類、海鮮、乳製品、飲料、調味料、穀物、豆類、其他）
 
 請務必用以下 JSON 格式回應，不要包含其他文字：
 {
-  "foods": ["食物名稱1", "食物名稱2", "食物名稱3"]
+  "foods": [
+    {
+      "name": "食物名稱",
+      "category": "分類"
+    }
+  ]
 }
 
 正確範例：
 {
-  "foods": ["蘋果", "香蕉 2根", "牛奶 500ml", "雞蛋 6個", "白米 1kg"]
+  "foods": [
+    {"name": "蘋果", "category": "水果"},
+    {"name": "香蕉 2根", "category": "水果"},
+    {"name": "牛奶 500ml", "category": "乳製品"},
+    {"name": "雞蛋 6個", "category": "其他"},
+    {"name": "白米 1kg", "category": "穀物"},
+    {"name": "番茄", "category": "蔬菜"},
+    {"name": "豬肉", "category": "肉類"}
+  ]
 }
 
 錯誤範例（請避免）：
 - 任何包含 "我看到" 或 "圖片中有" 的敘述
 - 任何不是 JSON 格式的回應
 - 任何包含解釋或分析的回應
+- 回應格式與範例不符
 ''';
 
       debugPrint('發送 Gemini Vision API 請求...');
@@ -752,12 +897,11 @@ $ingredientDetails
       debugPrint('回應為空');
       return {'success': false, 'items': [], 'error': '回應為空'};
     } catch (e) {
-      debugPrint('食物辨識失敗: $e');
+      debugPrint('食物辨識核心邏輯失敗: $e');
       debugPrint('錯誤詳情: ${e.toString()}');
-      debugPrint('Stack trace: ${StackTrace.current}');
-      debugPrint('圖片路徑檢查: ${imageFile.path}');
-      debugPrint('圖片是否存在: ${await imageFile.exists()}');
-      return {'success': false, 'items': [], 'error': e.toString()};
+      final exists = await imageFile.exists();
+      debugPrint('圖片路徑: ${imageFile.path}, 存在: $exists');
+      rethrow; // 重新拋出異常，讓外層的重試邏輯處理
     }
   }
 
@@ -1193,9 +1337,26 @@ $ingredientDetails
     final result = <Map<String, dynamic>>[];
 
     for (final food in foods) {
-      final item = _parseSingleFoodItem(food.toString());
-      if (item != null) {
-        result.add(item);
+      // 檢查是否為新格式（包含 name 和 category 的對象）
+      if (food is Map) {
+        final name = food['name']?.toString().trim() ?? '';
+        final category = food['category']?.toString().trim() ?? '其他';
+
+        if (name.isNotEmpty && !_isNonFoodWord(name)) {
+          final item = _parseSingleFoodItem(name);
+          if (item != null) {
+            item['category'] = category;
+            result.add(item);
+          }
+        }
+      } else {
+        // 舊格式（純字符串）
+        final item = _parseSingleFoodItem(food.toString());
+        if (item != null) {
+          // 沒有分類資訊時使用預設值
+          item['category'] = '其他';
+          result.add(item);
+        }
       }
     }
 
@@ -1232,6 +1393,7 @@ $ingredientDetails
               'name': name,
               'quantity': quantity != null ? int.tryParse(quantity) ?? 1 : 1,
               'unit': unit ?? '個',
+              'category': '其他', // 備用解析無法獲得分類，使用預設值
             });
           }
         }
@@ -1300,5 +1462,105 @@ $ingredientDetails
       debugPrint('解析營養分析回應失敗: $e');
       return {};
     }
+  }
+
+  /// 獲取食材的建議保存天數
+  Future<int?> getShelfLifeForIngredient(String ingredient) async {
+    try {
+      final prompt = '''
+你是一個專業的食物保鮮顧問。請根據以下食材名稱，提供合理的保存天數建議。
+
+食材名稱：$ingredient
+
+請考慮以下因素：
+1. 食材的新鮮度要求
+2. 一般家庭儲存條件
+3. 衛生安全考量
+
+請用 JSON 格式回應：
+{
+  "shelfLife": 建議保存天數（數字）
+}
+
+例如：
+{"shelfLife": 7}
+''';
+
+      final response = await generateTextContent(prompt);
+
+      if (response != null) {
+        try {
+          final jsonResponse = json.decode(response);
+          return jsonResponse['shelfLife'] as int?;
+        } catch (e) {
+          debugPrint('解析保存天數回應失敗: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('獲取保存天數失敗: $e');
+    }
+
+    return null;
+  }
+
+  /// 根據食材名稱建議詳細資訊（分類、保存天數等）
+  Future<List<Map<String, dynamic>>> suggestFoodDetails(String foodName) async {
+    try {
+      final prompt = '''
+你是一個專業的食物管理顧問。請根據以下食材名稱，提供詳細的建議資訊：
+
+食材名稱：$foodName
+
+請分析該食材並提供以下資訊：
+1. 最適合的食物分類
+2. 建議的儲存位置
+3. 建議的保存天數
+4. 該食材的特性描述
+
+請用 JSON 格式回應，格式如下：
+{
+  "suggestions": [
+    {
+      "category": "食物分類名稱",
+      "storageLocation": "儲存位置",
+      "shelfLife": 保存天數（數字）,
+      "description": "該食材的特性描述"
+    }
+  ]
+}
+
+例如：
+{
+  "suggestions": [
+    {
+      "category": "蔬菜",
+      "storageLocation": "冷藏",
+      "shelfLife": 5,
+      "description": "新鮮蔬菜，建議冷藏保存5天"
+    }
+  ]
+}
+''';
+
+      final response = await generateTextContent(prompt);
+
+      if (response != null) {
+        try {
+          final jsonResponse = json.decode(response);
+          final suggestions = jsonResponse['suggestions'] as List<dynamic>?;
+          if (suggestions != null) {
+            return suggestions
+                .map((suggestion) => suggestion as Map<String, dynamic>)
+                .toList();
+          }
+        } catch (e) {
+          debugPrint('解析智慧建議回應失敗: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('獲取智慧建議失敗: $e');
+    }
+
+    return [];
   }
 }

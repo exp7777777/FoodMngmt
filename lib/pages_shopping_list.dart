@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'providers.dart';
 import 'localization.dart';
@@ -20,11 +21,16 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
   Position? _currentPosition;
   String? _locationError;
   Map<String, List<Map<String, dynamic>>> _storeRecommendations = {};
+  bool _showNearbyStores = true; // 控制是否顯示附近店家
+  Map<String, bool> _loadingStores = {}; // 追蹤每個項目的載入狀態
 
   @override
   void initState() {
     super.initState();
-    _loadLocationAndRecommendations();
+    // 只有在啟用顯示附近店家時才載入推薦資料
+    if (_showNearbyStores) {
+      _loadLocationAndRecommendations();
+    }
   }
 
   @override
@@ -57,19 +63,82 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
     await _generateStoreRecommendations();
   }
 
-  Future<void> _generateStoreRecommendations() async {
+  Future<void> _generateStoreRecommendations({String? itemName}) async {
     final shoppingProvider = context.read<ShoppingProvider>();
     final locationService = LocationService.instance;
 
-    for (final item in shoppingProvider.items) {
-      if (!item.checked) {
-        // 只為未完成的項目生成推薦
-        final stores = await locationService.getNearbyStores(item.name);
-        _storeRecommendations[item.name] = stores;
+    if (itemName != null) {
+      // 為單個項目生成推薦
+      if (_loadingStores[itemName] == true) return; // 避免重複載入
+
+      setState(() {
+        _loadingStores[itemName] = true;
+      });
+
+      try {
+        final stores = await locationService.getNearbyStores(itemName);
+        setState(() {
+          _storeRecommendations[itemName] = stores;
+        });
+      } catch (e) {
+        debugPrint('載入商店推薦失敗: $e');
+        setState(() {
+          _loadingStores[itemName] = false;
+        });
+      }
+    } else {
+      // 為所有未完成的項目生成推薦（舊邏輯）
+      for (final item in shoppingProvider.items) {
+        if (!item.checked) {
+          final stores = await locationService.getNearbyStores(item.name);
+          _storeRecommendations[item.name] = stores;
+        }
+      }
+      setState(() {});
+    }
+  }
+
+  Future<void> _openStoreInMap(Map<String, dynamic> store) async {
+    try {
+      String url;
+
+      // 如果有 placeId，使用 place_id 查詢（更精確）
+      if (store['placeId'] != null && store['placeId'].toString().isNotEmpty) {
+        url =
+            'https://www.google.com/maps/search/?api=1&query=Google&query_place_id=${store['placeId']}';
+      } else {
+        // 否則使用店家名稱和地址搜尋
+        final query = Uri.encodeComponent(
+          '${store['name']} ${store['address']}',
+        );
+        url = 'https://www.google.com/maps/search/?api=1&query=$query';
+      }
+
+      final uri = Uri.parse(url);
+
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('無法打開 Google Maps'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('打開 Google Maps 失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('打開 Google Maps 失敗: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
-
-    setState(() {});
   }
 
   Widget _buildLocationReminderCard() {
@@ -124,137 +193,220 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
     return const SizedBox.shrink();
   }
 
+  void _showAllStores(String itemName, List<Map<String, dynamic>> stores) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Row(
+              children: [
+                Icon(Icons.store, color: Colors.blue[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '「$itemName」附近店家',
+                    style: const TextStyle(fontSize: 18),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: stores.length,
+                itemBuilder: (context, index) {
+                  final store = stores[index];
+                  final isRecommended = store['recommended'] == true;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    color: isRecommended ? Colors.green[50] : Colors.white,
+                    child: ListTile(
+                      leading: Icon(
+                        isRecommended ? Icons.star : Icons.store,
+                        color: isRecommended ? Colors.green : Colors.blue,
+                      ),
+                      title: Text(
+                        store['name'],
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight:
+                              isRecommended
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                        ),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${store['type']} • ${store['distance']}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          if (store['address'] != null)
+                            Text(
+                              store['address'],
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[600],
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          if (store['rating'] != null &&
+                              store['rating'].toString().isNotEmpty)
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.star,
+                                  size: 12,
+                                  color: Colors.orange,
+                                ),
+                                const SizedBox(width: 2),
+                                Text(
+                                  store['rating'].toString(),
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                      trailing: IconButton(
+                        icon: Icon(Icons.map, color: Colors.blue[700]),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _openStoreInMap(store);
+                        },
+                        tooltip: '在地圖中查看',
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('關閉'),
+              ),
+            ],
+          ),
+    );
+  }
+
   Widget _buildStoreRecommendations(String itemName) {
+    // 如果沒有啟用顯示附近店家，直接返回
+    if (!_showNearbyStores) {
+      return const SizedBox.shrink();
+    }
+
     final stores = _storeRecommendations[itemName] ?? [];
+
+    // 如果沒有商店資料且沒有在載入中，觸發載入
+    if (stores.isEmpty && _loadingStores[itemName] != true) {
+      // 異步觸發載入，避免阻塞UI
+      Future.microtask(() => _generateStoreRecommendations(itemName: itemName));
+      _loadingStores[itemName] = true;
+    }
+
+    // 如果正在載入且沒有商店資料，顯示載入動畫
+    if (_loadingStores[itemName] == true && stores.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[300]!),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[600]!),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '正在尋找附近商店...',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (stores.isEmpty) return const SizedBox.shrink();
 
     // 找出推薦的商店
     final recommendedStores =
         stores.where((store) => store['recommended'] == true).toList();
-    final otherStores =
-        stores.where((store) => store['recommended'] != true).toList();
 
-    return Container(
-      margin: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue[200]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.store, size: 16, color: Colors.blue[700]),
-              const SizedBox(width: 4),
-              Text(
-                AppLocalizations.of(context).nearbyStores,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+    return InkWell(
+      onTap: () => _showAllStores(itemName, stores),
+      child: Container(
+        margin: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.blue[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.blue[200]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.store, size: 16, color: Colors.blue[700]),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    AppLocalizations.of(context).nearbyStores,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue[700],
+                    ),
+                  ),
+                ),
+                Text(
+                  '找到 ${stores.length} 個店家',
+                  style: TextStyle(fontSize: 11, color: Colors.blue[600]),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 12,
                   color: Colors.blue[700],
                 ),
+              ],
+            ),
+            if (recommendedStores.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.star, size: 12, color: Colors.green),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '推薦：${recommendedStores.first['name']} (${recommendedStores.first['distance']})',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-
-          // 顯示推薦的商店
-          if (recommendedStores.isNotEmpty) ...[
-            Text(
-              '推薦商店：',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
-                color: Colors.green[700],
-              ),
-            ),
-            ...recommendedStores
-                .take(1)
-                .map(
-                  (store) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(
-                      children: [
-                        Icon(Icons.star, size: 12, color: Colors.green),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            '${store['name']} (${store['distance']})',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green[100],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            store['type'],
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Colors.green[700],
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            const SizedBox(height: 6),
           ],
-
-          // 顯示其他商店
-          if (otherStores.isNotEmpty) ...[
-            Text(
-              '其他商店：',
-              style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-            ),
-            ...otherStores
-                .take(2)
-                .map(
-                  (store) => Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '${store['name']} (${store['distance']})',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                        ),
-                        Text(
-                          store['type'],
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: Colors.grey[500],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-          ],
-
-          if (stores.length > 3)
-            Text(
-              '...還有 ${stores.length - 3} 個商店',
-              style: TextStyle(fontSize: 9, color: Colors.grey[500]),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -264,6 +416,27 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(AppLocalizations.of(context).shoppingListTitle),
+        actions: [
+          IconButton(
+            icon: Icon(
+              _showNearbyStores ? Icons.location_on : Icons.location_off,
+            ),
+            tooltip: _showNearbyStores ? '隱藏附近店家' : '顯示附近店家',
+            onPressed: () {
+              setState(() {
+                _showNearbyStores = !_showNearbyStores;
+                // 如果切換為顯示狀態，需要重新生成推薦
+                if (_showNearbyStores) {
+                  _loadLocationAndRecommendations();
+                } else {
+                  // 如果切換為隱藏狀態，清空推薦資料
+                  _storeRecommendations.clear();
+                  _loadingStores.clear();
+                }
+              });
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -439,26 +612,48 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
                                 it.id ?? '',
                                 v ?? false,
                               );
-                              // 更新推薦（已完成的項目不需要推薦）
+                              // 更新推薦狀態
                               if (v == true) {
+                                // 項目被勾選，移除商店推薦
                                 _storeRecommendations.remove(it.name);
-                                setState(() {});
+                                _loadingStores.remove(it.name);
+                              } else {
+                                // 項目被取消勾選，需要重新生成商店推薦
+                                if (_showNearbyStores) {
+                                  // 重置載入狀態並重新生成推薦
+                                  _loadingStores.remove(it.name);
+                                  _storeRecommendations.remove(it.name);
+                                  _generateStoreRecommendations(
+                                    itemName: it.name,
+                                  );
+                                }
                               }
+                              setState(() {});
                             },
                             secondary: MouseRegion(
                               cursor: SystemMouseCursors.click,
                               child: IconButton(
                                 icon: Icon(Icons.delete_outline),
-                                onPressed:
-                                    () => context
-                                        .read<ShoppingProvider>()
-                                        .remove(it.id ?? ''),
+                                onPressed: () async {
+                                  // 清理該項目的商店推薦資料
+                                  _storeRecommendations.remove(it.name);
+                                  _loadingStores.remove(it.name);
+
+                                  // 刪除項目
+                                  await context.read<ShoppingProvider>().remove(
+                                    it.id ?? '',
+                                  );
+
+                                  setState(() {});
+                                },
                               ),
                             ),
                           ),
                         ),
-                        // 商店推薦區域（只為未完成的項目顯示）
-                        if (!it.checked) _buildStoreRecommendations(it.name),
+                        // 商店推薦區域（只為未完成的項目顯示，並且啟用了附近店家功能）
+                        if (!it.checked && _showNearbyStores) ...[
+                          _buildStoreRecommendations(it.name),
+                        ],
                       ],
                     );
                   },

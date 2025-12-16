@@ -77,21 +77,87 @@ class IntegratedRecipeService {
     }
   }
 
-  /// 將 Recipe 轉換為 RecipeSuggestion
+  /// 將 Recipe 轉換為 RecipeSuggestion（帶智慧食材比對）
   RecipeSuggestion _convertToRecipeSuggestion(
     Recipe recipe,
     List<FoodItem> inventory,
   ) {
-    // 建立所需食材的 Map
+    // 建立所需食材的 Map（包含所有食材）
     final requiredItems = <String, String>{};
-    for (final ingredient in recipe.requiredIngredients) {
-      requiredItems[ingredient.name] = ingredient.fullDescription;
-    }
-
-    // 建立缺失食材的 Map
     final missingItems = <String, String>{};
-    for (final ingredient in recipe.missingIngredients) {
-      missingItems[ingredient.name] = ingredient.fullDescription;
+
+    // 合併所有食材（requiredIngredients 和 missingIngredients）
+    final allIngredients = [
+      ...recipe.requiredIngredients,
+      ...recipe.missingIngredients,
+    ];
+
+    // 建立用戶庫存食材名稱列表（用於比對）
+    final inventoryNames =
+        inventory.map((item) => item.name.toLowerCase()).toSet();
+
+    // 對每個食材進行智慧比對
+    for (final ingredient in allIngredients) {
+      final ingredientName = ingredient.name;
+      final ingredientNameLower = ingredientName.toLowerCase();
+
+      // 將所有食材添加到 requiredItems
+      requiredItems[ingredientName] = ingredient.fullDescription;
+
+      // 檢查是否在庫存中（使用智慧比對）
+      bool hasIngredient = false;
+
+      // 1. 精確匹配
+      if (inventoryNames.contains(ingredientNameLower)) {
+        hasIngredient = true;
+      }
+
+      // 2. 包含匹配（例如：庫存有"豬肉片"，食譜需要"豬肉"）
+      if (!hasIngredient) {
+        for (final invName in inventoryNames) {
+          if (invName.contains(ingredientNameLower) ||
+              ingredientNameLower.contains(invName)) {
+            hasIngredient = true;
+            break;
+          }
+        }
+      }
+
+      // 3. 常見調味料（通常家裡都有）- 僅限真正的調味料
+      if (!hasIngredient) {
+        final commonSeasonings = [
+          '鹽',
+          '糖',
+          '醬油',
+          '醋',
+          '料酒',
+          '米酒',
+          '胡椒',
+          '味精',
+          '雞精',
+          '香油',
+          '麻油',
+          '辣椒粉',
+          '八角',
+          '桂皮',
+          '花椒',
+          '五香粉',
+        ];
+
+        // 精確匹配調味料（不使用包含匹配）
+        if (commonSeasonings.contains(ingredientName)) {
+          hasIngredient = true;
+          debugPrint('食材「$ingredientName」被識別為常見調味料');
+        }
+      }
+
+      // 如果缺少該食材，加入 missingItems
+      if (!hasIngredient) {
+        missingItems[ingredientName] = ingredient.fullDescription;
+        debugPrint('缺少食材: $ingredientName');
+      } else {
+        debugPrint('已有食材: $ingredientName');
+      }
     }
 
     // 轉換步驟
@@ -100,9 +166,13 @@ class IntegratedRecipeService {
             .map((step) => '${step.number}. ${step.description}')
             .toList();
 
+    debugPrint(
+      '食譜「${recipe.title}」- 所需: ${requiredItems.length}, 缺少: ${missingItems.length}',
+    );
+
     return RecipeSuggestion(
       title: recipe.title,
-      originalTitle: recipe.title, // Gemini 已經生成中文標題
+      originalTitle: recipe.title,
       steps: steps,
       requiredItems: requiredItems,
       missingItems: missingItems,
@@ -139,7 +209,7 @@ class IntegratedRecipeService {
 
     final fallbackRecipes = [
       {
-        'title': '簡單炒飯',
+        'title': '醬油炒飯',
         'requires': {'白飯': '1碗', '雞蛋': '2顆', '蔥': '1根', '醬油': '1湯匙'},
         'steps': ['熱鍋下油', '炒蛋盛起', '炒飯至粒粒分明', '加入蛋和蔥花', '調味即可'],
         'cookingTime': '15分鐘',
@@ -197,34 +267,51 @@ class IntegratedRecipeService {
 
     try {
       // 建立測試食材
+      final now = DateTime.now();
       final testInventory = [
         FoodItem(
           name: '雞蛋',
           quantity: 6,
           unit: '顆',
-          expiryDate: DateTime.now().add(const Duration(days: 5)),
+          purchaseDate: now.subtract(const Duration(days: 2)),
+          expiryDate: now.add(const Duration(days: 5)),
+          shelfLifeDays: 7,
           category: FoodCategory.other,
+          storageLocation: StorageLocation.refrigerated,
+          isOpened: false,
         ),
         FoodItem(
           name: '白飯',
           quantity: 2,
           unit: '碗',
-          expiryDate: DateTime.now().add(const Duration(days: 1)),
+          purchaseDate: now.subtract(const Duration(days: 1)),
+          expiryDate: now.add(const Duration(days: 1)),
+          shelfLifeDays: 2,
           category: FoodCategory.staple,
+          storageLocation: StorageLocation.roomTemperature,
+          isOpened: false,
         ),
         FoodItem(
           name: '醬油',
           quantity: 1,
           unit: '瓶',
-          expiryDate: DateTime.now().add(const Duration(days: 30)),
+          purchaseDate: now.subtract(const Duration(days: 10)),
+          expiryDate: now.add(const Duration(days: 30)),
+          shelfLifeDays: 40,
           category: FoodCategory.other,
+          storageLocation: StorageLocation.roomTemperature,
+          isOpened: false,
         ),
         FoodItem(
           name: '蔥',
           quantity: 1,
           unit: '把',
-          expiryDate: DateTime.now().add(const Duration(days: 2)),
+          purchaseDate: now,
+          expiryDate: now.add(const Duration(days: 2)),
+          shelfLifeDays: 2,
           category: FoodCategory.other,
+          storageLocation: StorageLocation.refrigerated,
+          isOpened: false,
         ),
       ];
 
@@ -254,7 +341,6 @@ class IntegratedRecipeService {
     debugPrint('=== 整合食譜服務測試完成 ===');
   }
 
-  /// 獲取服務狀態
-  bool get isGeminiServiceAvailable =>
-      GeminiRecipeService.instance.isInitialized;
+  /// 獲取服務狀態（目前只要有 API Key 就視為可用）
+  bool get isGeminiServiceAvailable => true;
 }

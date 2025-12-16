@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import 'ai_recipe_engine.dart';
 import 'providers.dart';
 import 'localization.dart';
-import 'gemini_recipe_service.dart';
+import 'recipe_history_service.dart';
+import 'recipe_history_dialog.dart';
 
 class AiMenuPage extends StatefulWidget {
   const AiMenuPage({super.key});
@@ -18,6 +19,7 @@ class _AiMenuPageState extends State<AiMenuPage> {
   bool _isLoading = false;
   String? _error;
   String? _lastGeminiResponse;
+  bool _isCancelled = false;
 
   @override
   void initState() {
@@ -26,11 +28,15 @@ class _AiMenuPageState extends State<AiMenuPage> {
   }
 
   Future<void> _loadRecipes() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-      _lastGeminiResponse = null;
-    });
+    _isCancelled = false;
+
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+        _lastGeminiResponse = null;
+      });
+    }
 
     try {
       final inv = context.read<FoodProvider>().items;
@@ -39,7 +45,13 @@ class _AiMenuPageState extends State<AiMenuPage> {
       final engine = RecipeEngine();
       final geminiRecipes = await engine.suggestWithGemini(inv);
 
+      // 檢查是否已取消
+      if (_isCancelled || !mounted) return;
+
       if (geminiRecipes.isNotEmpty) {
+        // 保存到歷史紀錄
+        await RecipeHistoryService.instance.addRecipes(geminiRecipes);
+
         setState(() {
           _suggestions = geminiRecipes;
           _isLoading = false;
@@ -56,11 +68,8 @@ class _AiMenuPageState extends State<AiMenuPage> {
         });
       }
     } catch (e) {
-      setState(() {
-        _error = '無法載入食譜建議: $e';
-        _isLoading = false;
-        _lastGeminiResponse = '發生錯誤: $e';
-      });
+      // 檢查是否已取消
+      if (_isCancelled || !mounted) return;
 
       // 出錯時使用備用食譜
       final engine = RecipeEngine();
@@ -69,49 +78,70 @@ class _AiMenuPageState extends State<AiMenuPage> {
       );
       setState(() {
         _suggestions = fallbackRecipes;
+        _isLoading = false;
+        // 不顯示錯誤，只記錄日誌並提示使用備用食譜
+        _lastGeminiResponse = 'AI 服務暫時無法使用，已為您提供精選食譜';
+        _error = null;
       });
+
+      // 記錄錯誤到控制台
+      debugPrint('食譜生成錯誤: $e');
     }
   }
 
-  Future<void> _testGeminiService() async {
-    try {
-      await GeminiRecipeService.instance.testRecipeGeneration();
+  Future<bool> _onWillPop() async {
+    // 顯示確認對話框
+    final shouldPop = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('確認退出'),
+            content: Text(_isLoading ? '食譜正在生成中，確定要離開嗎？' : '確定要離開剩食譜頁面嗎？'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('否'),
+              ),
+              TextButton(
+                onPressed: () {
+                  // 如果正在生成中，標記為已取消
+                  if (_isLoading) {
+                    _isCancelled = true;
+                    debugPrint('用戶取消食譜生成');
+                  }
+                  Navigator.of(context).pop(true);
+                },
+                child: const Text('是'),
+              ),
+            ],
+          ),
+    );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gemini 服務測試完成，請查看控制台輸出'),
-            duration: Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Gemini 服務測試失敗: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
+    return shouldPop ?? false;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(AppLocalizations.of(context).aiMenuTitle),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadRecipes,
-            tooltip: '重新生成食譜',
-          ),
-        ],
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(AppLocalizations.of(context).aiMenuTitle),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.history),
+              onPressed: () => _showHistory(context),
+              tooltip: '歷史紀錄',
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadRecipes,
+              tooltip: '重新生成食譜',
+            ),
+          ],
+        ),
+        body: _buildBody(),
       ),
-      body: _buildBody(),
     );
   }
 
@@ -123,7 +153,7 @@ class _AiMenuPageState extends State<AiMenuPage> {
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('正在生成智慧食譜...'),
+            Text('正在生成剩食譜...'),
           ],
         ),
       );
@@ -287,11 +317,11 @@ class _AiMenuPageState extends State<AiMenuPage> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      ...s.steps.asMap().entries.map(
-                        (entry) => Padding(
-                          padding: const EdgeInsets.only(bottom: 2),
+                      ...s.steps.map(
+                        (step) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
                           child: Text(
-                            '${entry.key + 1}. ${entry.value}',
+                            step,
                             style: const TextStyle(fontSize: 14),
                           ),
                         ),
@@ -319,9 +349,11 @@ class _AiMenuPageState extends State<AiMenuPage> {
                                 color: Colors.green,
                               ),
                               const SizedBox(width: 4),
-                              Text(
-                                '${e.key}：${e.value}',
-                                style: const TextStyle(fontSize: 13),
+                              Expanded(
+                                child: Text(
+                                  e.value,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
                               ),
                             ],
                           ),
@@ -351,11 +383,13 @@ class _AiMenuPageState extends State<AiMenuPage> {
                                   color: Colors.orange,
                                 ),
                                 const SizedBox(width: 4),
-                                Text(
-                                  '${e.key}：${e.value}',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.orange[800],
+                                Expanded(
+                                  child: Text(
+                                    e.value,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.orange[800],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -435,6 +469,20 @@ class _AiMenuPageState extends State<AiMenuPage> {
         return Colors.red;
       default:
         return Colors.blue;
+    }
+  }
+
+  /// 顯示歷史紀錄對話框
+  Future<void> _showHistory(BuildContext context) async {
+    final history = await RecipeHistoryService.instance.getHistory();
+
+    if (!mounted) return;
+
+    if (context.mounted) {
+      await showDialog(
+        context: context,
+        builder: (context) => HistoryDialog(history: history),
+      );
     }
   }
 }

@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-import 'gemini_service.dart';
-import 'models.dart';
+import 'package:provider/provider.dart';
+import 'voice_service.dart';
+import 'providers.dart';
 
 import 'foodmngmt_FoodManager.dart';
 import 'pages_shopping_list.dart';
@@ -11,6 +12,7 @@ import 'pages_food_form.dart';
 import 'pages_calendar.dart';
 import 'pages_settings.dart';
 import 'localization.dart';
+import 'image_recognition_helper.dart';
 
 class RootScaffold extends StatefulWidget {
   final int initialIndex;
@@ -84,6 +86,7 @@ class _RootScaffoldState extends State<RootScaffold> {
 class _AddActionSheet extends StatelessWidget {
   final BuildContext? rootContext;
   _AddActionSheet({this.rootContext});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -119,8 +122,11 @@ class _AddActionSheet extends StatelessWidget {
                   icon: Icons.mic,
                   label: AppLocalizations.of(context).voiceEntry,
                   onTap: () async {
+                    final rc = rootContext ?? context;
                     Navigator.pop(context);
-                    // TODO: 語音輸入流程（後續可接）
+
+                    // 開始語音輸入流程（用於新增食材）
+                    await _handleVoiceInputForFood(rc);
                   },
                 ),
                 _ActionItem(
@@ -139,67 +145,115 @@ class _AddActionSheet extends StatelessWidget {
 
                       if (picked == null) return;
 
-                      // 呼叫 Gemini 食物辨識
-                      final identifiedResult = await GeminiService.instance
-                          .identifyFood(File(picked.path));
-
-                      FoodItem? initialFoodItem;
-
-                      // 檢查辨識是否成功
-                      if (rc.mounted && identifiedResult['success'] == true) {
-                        final identifiedFoods =
-                            identifiedResult['items'] as List<dynamic>;
-
-                        if (identifiedFoods.isNotEmpty) {
-                          // 選擇第一個辨識結果
-                          final firstFood =
-                              identifiedFoods.first as Map<String, dynamic>;
-                          final foodName = firstFood['name'] as String;
-                          final quantity = firstFood['quantity'] as int;
-                          final unit = firstFood['unit'] as String;
-
-                          initialFoodItem = FoodItem(
-                            name: foodName,
-                            quantity: quantity,
-                            unit: unit,
-                            expiryDate: DateTime.now().add(
-                              const Duration(days: 7),
+                      // 顯示 loading
+                      showDialog(
+                        context: rc,
+                        barrierDismissible: false,
+                        builder: (BuildContext context) {
+                          return WillPopScope(
+                            onWillPop: () async => false,
+                            child: Container(
+                              color: Colors.black54,
+                              child: Center(
+                                child: Card(
+                                  elevation: 8,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24.0),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        CircularProgressIndicator(),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          '正在辨識圖片...',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                            category: FoodCategory.other, // 稍後會自動判斷
-                            note: null,
+                          );
+                        },
+                      );
+
+                      // 使用共用的影像辨識輔助函數
+                      final recognizedFood =
+                          await ImageRecognitionHelper.recognizeAndSelectFood(
+                            context: rc,
+                            imageFile: File(picked.path),
                             imagePath: picked.path,
                           );
+
+                      // 關閉 loading
+                      if (rc.mounted) {
+                        try {
+                          Navigator.of(rc).pop();
+                          // 添加延遲，讓無障礙樹有時間更新，避免 AXTree 錯誤
+                          await Future.delayed(
+                            const Duration(milliseconds: 100),
+                          );
+                        } catch (_) {
+                          // loading 對話框可能已被關閉
                         }
                       }
 
-                      // 導航到食物表單頁面
+                      // 使用 addPostFrameCallback 確保在正確的時機導航，避免無障礙樹錯誤
                       if (rc.mounted) {
-                        Navigator.push(
-                          rc,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => FoodFormPage(initial: initialFoodItem),
-                          ),
-                        );
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (rc.mounted) {
+                            Navigator.push(
+                              rc,
+                              MaterialPageRoute(
+                                builder:
+                                    (_) =>
+                                        FoodFormPage(initial: recognizedFood),
+                              ),
+                            );
+                          }
+                        });
                       }
                     } catch (e) {
-                      // 顯示錯誤提示並導航到空表單
+                      debugPrint('影像辨識錯誤: $e');
+
+                      // 關閉 loading
+                      if (rc.mounted) {
+                        try {
+                          Navigator.of(rc).pop();
+                          // 添加延遲，避免 AXTree 錯誤
+                          await Future.delayed(
+                            const Duration(milliseconds: 100),
+                          );
+                        } catch (_) {
+                          // 如果 dialog 不存在則忽略
+                        }
+                      }
+
+                      // 顯示錯誤提示
                       if (rc.mounted) {
                         ScaffoldMessenger.of(rc).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '${AppLocalizations.of(rc).recognitionFailed}$e',
-                            ),
+                          const SnackBar(
+                            content: Text('發生未預期的錯誤，請稍後再試'),
+                            duration: Duration(seconds: 3),
                           ),
                         );
 
-                        // 導航到空表單讓用戶手動輸入
-                        Navigator.push(
-                          rc,
-                          MaterialPageRoute(
-                            builder: (_) => FoodFormPage(initial: null),
-                          ),
-                        );
+                        // 使用 addPostFrameCallback 導航，避免無障礙樹錯誤
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (rc.mounted) {
+                            Navigator.push(
+                              rc,
+                              MaterialPageRoute(
+                                builder:
+                                    (_) => const FoodFormPage(initial: null),
+                              ),
+                            );
+                          }
+                        });
                       }
                     }
                   },
@@ -271,5 +325,410 @@ class _ActionItemState extends State<_ActionItem> {
         ),
       ),
     );
+  }
+}
+
+// 處理語音輸入
+Future<void> _handleVoiceInput(BuildContext context) async {
+  try {
+    // 顯示語音識別對話框
+    bool isListening = false;
+    bool isProcessing = false;
+    String recognizedText = '';
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Row(
+                children: [
+                  Icon(
+                    Icons.mic,
+                    color: isListening ? Colors.red : Colors.grey,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text('語音登錄'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!isListening && !isProcessing) ...[
+                    const Text('請點擊下方按鈕開始說話'),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '例如：「我要買雞蛋、三瓶牛奶和兩斤豬肉」',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ] else if (isListening) ...[
+                    const SizedBox(
+                      width: 60,
+                      height: 60,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '正在聆聽中...',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '請說出您要購買的食材',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ] else if (isProcessing) ...[
+                    const SizedBox(
+                      width: 60,
+                      height: 60,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('處理中...', style: TextStyle(fontSize: 16)),
+                    if (recognizedText.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '「$recognizedText」',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+              actions: [
+                if (!isListening && !isProcessing)
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('取消'),
+                  ),
+                if (!isListening && !isProcessing)
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      setState(() => isListening = true);
+
+                      // 開始持續語音識別
+                      final voiceService = VoiceService.instance;
+                      await voiceService.startContinuousListening();
+                    },
+                    icon: const Icon(Icons.mic),
+                    label: const Text('開始錄音'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                if (isListening)
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      setState(() {
+                        isListening = false;
+                        isProcessing = true;
+                      });
+
+                      // 停止錄音並獲取結果
+                      final voiceService = VoiceService.instance;
+                      final text = await voiceService.stopAndGetResult();
+
+                      if (text != null && text.isNotEmpty) {
+                        setState(() {
+                          recognizedText = text;
+                        });
+
+                        // 使用 Gemini 解析語音內容
+                        final items = await voiceService.parseVoiceInput(text);
+
+                        if (items.isNotEmpty && dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+
+                          // 顯示確認對話框
+                          _showConfirmItems(context, items);
+                        } else {
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('無法識別食材，請重試'),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                          }
+                        }
+                      } else {
+                        setState(() => isProcessing = false);
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('語音識別失敗，請重試'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.pause),
+                    label: const Text('暫停'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } catch (e) {
+    debugPrint('語音輸入錯誤: $e');
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('語音輸入失敗: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+}
+
+// 顯示確認食材清單對話框
+Future<void> _showConfirmItems(
+  BuildContext context,
+  List<Map<String, String>> items,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder:
+        (context) => AlertDialog(
+          title: const Text('確認食材'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('已識別以下食材，確認要加入購物清單嗎？'),
+              const SizedBox(height: 16),
+              ...items.map(
+                (item) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, size: 20, color: Colors.green),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${item['name']} - ${item['amount']}',
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('確認加入'),
+            ),
+          ],
+        ),
+  );
+
+  if (confirmed == true && context.mounted) {
+    // 加入到購物清單
+    final shoppingProvider = context.read<ShoppingProvider>();
+    int successCount = 0;
+
+    for (final item in items) {
+      try {
+        await shoppingProvider.add(item['name']!, amount: item['amount']);
+        successCount++;
+      } catch (e) {
+        debugPrint('添加食材失敗: ${item['name']}, $e');
+      }
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('成功加入 $successCount 個食材到購物清單'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+}
+
+/// 處理語音輸入（用於新增食材）
+Future<void> _handleVoiceInputForFood(BuildContext context) async {
+  try {
+    bool isListening = false;
+    bool isProcessing = false;
+    String recognizedText = '';
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.mic, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('語音輸入食材'),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!isListening && !isProcessing) ...[
+                    const Icon(Icons.mic_none, size: 64, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '請點擊「開始錄音」按鈕\n說出要新增的食材名稱',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '例如：「雞蛋」、「牛奶」、「蘋果」',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ] else if (isListening) ...[
+                    const Icon(Icons.mic, size: 64, color: Colors.red),
+                    const SizedBox(height: 16),
+                    const Text(
+                      '正在錄音中...',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const CircularProgressIndicator(),
+                  ] else if (isProcessing) ...[
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    const Text('正在處理語音...'),
+                    if (recognizedText.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '識別結果：$recognizedText',
+                        style: const TextStyle(fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+              actions: [
+                if (!isListening && !isProcessing)
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('取消'),
+                  ),
+                if (!isListening && !isProcessing)
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      setState(() => isListening = true);
+
+                      // 開始持續語音識別
+                      final voiceService = VoiceService.instance;
+                      await voiceService.startContinuousListening();
+                    },
+                    icon: const Icon(Icons.mic),
+                    label: const Text('開始錄音'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                if (isListening)
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      setState(() {
+                        isListening = false;
+                        isProcessing = true;
+                      });
+
+                      // 停止錄音並獲取結果
+                      final voiceService = VoiceService.instance;
+                      final text = await voiceService.stopAndGetResult();
+
+                      if (text != null && text.isNotEmpty) {
+                        setState(() {
+                          recognizedText = text;
+                        });
+
+                        // 關閉對話框並導向到食材表單頁面
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+
+                          // 導航到食材表單頁面，帶入識別的食材名稱
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (_) => FoodFormPage(
+                                    initial: null,
+                                    initialName: text.trim(),
+                                  ),
+                            ),
+                          );
+                        }
+                      } else {
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('無法識別語音，請重試'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.stop),
+                    label: const Text('停止錄音'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  } catch (e) {
+    debugPrint('語音輸入失敗: $e');
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('語音輸入失敗: $e')));
+    }
   }
 }

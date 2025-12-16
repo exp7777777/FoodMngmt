@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'models.dart';
 import 'repositories.dart';
-import 'firebase_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+import 'firebase_service.dart';
+import 'push_notification_service.dart';
 
 class FoodProvider extends ChangeNotifier {
   final FoodRepository _repo;
@@ -48,6 +52,7 @@ class FoodProvider extends ChangeNotifier {
               _allItems = [];
               _items = [];
               _errorMessage = null;
+              unawaited(_syncExpiryReminders());
               notifyListeners();
             }
           }
@@ -73,8 +78,10 @@ class FoodProvider extends ChangeNotifier {
       // 確保用戶已登入
       if (_firebaseService.currentUserId == null) {
         debugPrint('用戶未登入，無法載入食材資料');
+        _allItems = [];
         _items = [];
         _isLoading = false;
+        await _syncExpiryReminders();
         notifyListeners();
         return;
       }
@@ -89,6 +96,7 @@ class FoodProvider extends ChangeNotifier {
       _applyFilters(); // 應用篩選條件
       debugPrint('成功載入 ${items.length} 個食材項目');
       _isLoading = false;
+      await _syncExpiryReminders();
       notifyListeners();
     } catch (e) {
       debugPrint('FoodProvider 載入資料錯誤: $e');
@@ -96,6 +104,7 @@ class FoodProvider extends ChangeNotifier {
       _items = [];
       _errorMessage = '載入資料失敗: $e';
       _isLoading = false;
+      await _syncExpiryReminders();
       notifyListeners();
     }
   }
@@ -143,6 +152,14 @@ class FoodProvider extends ChangeNotifier {
     _items = filteredItems;
   }
 
+  Future<void> _syncExpiryReminders() async {
+    try {
+      await PushNotificationService.instance.refreshExpiryReminders(_allItems);
+    } catch (e) {
+      debugPrint('同步到期提醒失敗：$e');
+    }
+  }
+
   Future<void> add(FoodItem item) async {
     try {
       final itemId = await _repo.insert(item);
@@ -152,6 +169,7 @@ class FoodProvider extends ChangeNotifier {
       final newItem = item.copyWith(id: itemId);
       _allItems.add(newItem);
       _applyFilters();
+      await _syncExpiryReminders();
       notifyListeners();
     } catch (e) {
       debugPrint('Error adding food item: $e');
@@ -169,6 +187,7 @@ class FoodProvider extends ChangeNotifier {
       if (index != -1) {
         _allItems[index] = item;
         _applyFilters();
+        await _syncExpiryReminders();
         notifyListeners();
       }
     } catch (e) {
@@ -185,6 +204,7 @@ class FoodProvider extends ChangeNotifier {
       // 直接從本地狀態移除，避免重新載入
       _allItems.removeWhere((item) => item.id == id);
       _applyFilters();
+      await _syncExpiryReminders();
       notifyListeners();
     } catch (e) {
       debugPrint('Error removing food item: $e');

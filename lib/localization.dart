@@ -79,7 +79,7 @@ class AppLocalizations {
   String get locationReminders =>
       locale.languageCode == 'en' ? 'Location Reminders' : '位置提醒';
   String get nearbyStores =>
-      locale.languageCode == 'en' ? 'Nearby Stores' : '附近商店';
+      locale.languageCode == 'en' ? 'Nearby Stores' : '附近店家';
   String get getLocation =>
       locale.languageCode == 'en' ? 'Get Location' : '獲取位置';
   String get locationPermissionDenied =>
@@ -130,6 +130,8 @@ class AppLocalizations {
   String get categoryDairy => locale.languageCode == 'en' ? 'Dairy' : '乳製品';
   String get categoryDessert => locale.languageCode == 'en' ? 'Dessert' : '甜點';
   String get categoryFruit => locale.languageCode == 'en' ? 'Fruit' : '水果';
+  String get categoryVegetable =>
+      locale.languageCode == 'en' ? 'Vegetable' : '蔬菜';
   String get categoryStaple => locale.languageCode == 'en' ? 'Staple' : '主食';
   String get categoryBeverage =>
       locale.languageCode == 'en' ? 'Beverage' : '飲料';

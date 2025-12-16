@@ -7,7 +7,14 @@ import 'providers.dart';
 import 'pages_ai_menu.dart';
 import 'localization.dart';
 
-class FoodMngmtPage extends StatelessWidget {
+class FoodMngmtPage extends StatefulWidget {
+  const FoodMngmtPage({super.key});
+
+  @override
+  State<FoodMngmtPage> createState() => _FoodMngmtPageState();
+}
+
+class _FoodMngmtPageState extends State<FoodMngmtPage> {
   final List<Map<String, String>> foodItems = const [
     {
       'name': '鮮乳優格(450g)',
@@ -49,11 +56,7 @@ class FoodMngmtPage extends StatelessWidget {
         title: Text(AppLocalizations.of(context).foodManagerTitle),
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: () => provider.refresh(),
-          ),
-          IconButton(
-            icon: Icon(Icons.auto_awesome),
+            icon: const Icon(Icons.book),
             tooltip: AppLocalizations.of(context).aiMenuRecommendation,
             onPressed: () {
               Navigator.push(
