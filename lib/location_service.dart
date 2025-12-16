@@ -16,8 +16,11 @@ class LocationService {
   LocationService._();
 
   // Google Places API Key
-  // 注意：實際應用中應該從環境變數或安全的配置中讀取
-  static const String _googlePlacesApiKey = 'YOUR API KEY';
+  // 透過 --dart-define 傳入，避免把金鑰寫死在程式碼
+  static const String _googlePlacesApiKey = String.fromEnvironment(
+    'FOODMNGMT_GOOGLE_PLACES_API_KEY',
+    defaultValue: 'YOUR API KEY',
+  );
 
   Future<Position?> getCurrentLocation() async {
     try {

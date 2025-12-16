@@ -13,8 +13,11 @@ class GeminiService {
   }
 
   // 在實際應用中，應該從安全的環境變數或後端服務獲取 API 金鑰
-  // 這裡使用一個範例金鑰，請務必替換為您自己的金鑰
-  static const String _apiKey = 'YOUR API KEY';
+  // 這裡透過 --dart-define 傳入，程式碼只保留預設佔位字串
+  static const String _apiKey = String.fromEnvironment(
+    'FOODMNGMT_GEMINI_API_KEY',
+    defaultValue: 'YOUR API KEY',
+  );
 
   late GenerativeModel _textModel;
   late GenerativeModel _visionModel;

@@ -17,8 +17,11 @@ class VoiceService {
   bool _isInitialized = false;
   String _currentRecognizedText = ''; // 保存當前識別的文字
 
-  // 使用用戶提供的 Generative Language API Key
-  static const String _apiKey = 'YOUR API KEY';
+  // 使用用戶提供的 Generative Language API Key（透過 --dart-define 提供）
+  static const String _apiKey = String.fromEnvironment(
+    'FOODMNGMT_VOICE_API_KEY',
+    defaultValue: 'YOUR API KEY',
+  );
 
   /// 初始化語音識別
   Future<bool> initialize() async {

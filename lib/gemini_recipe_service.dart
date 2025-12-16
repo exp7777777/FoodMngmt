@@ -18,8 +18,11 @@ class GeminiRecipeService {
 
   GeminiRecipeService._();
 
-  // 使用與 GeminiService 相同的 API Key
-  static const String _apiKey = 'YOUR API KEY';
+  // 使用與 GeminiService 相同的 API Key（透過 --dart-define 提供）
+  static const String _apiKey = String.fromEnvironment(
+    'FOODMNGMT_GEMINI_API_KEY',
+    defaultValue: 'YOUR API KEY',
+  );
   static const String _modelName = 'models/gemini-2.5-pro';
   static const Duration _requestTimeout = Duration(seconds: 45);
   static const Map<String, dynamic> _defaultGenerationConfig = {
