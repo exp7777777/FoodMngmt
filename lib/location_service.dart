@@ -17,8 +17,7 @@ class LocationService {
 
   // Google Places API Key
   // 注意：實際應用中應該從環境變數或安全的配置中讀取
-  static const String _googlePlacesApiKey =
-      'AIzaSyA_JERIzSeQaXVsUdE2eS0uTVT8QoqZAfY';
+  static const String _googlePlacesApiKey = 'YOUR API KEY';
 
   Future<Position?> getCurrentLocation() async {
     try {

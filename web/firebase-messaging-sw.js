@@ -2,7 +2,7 @@ importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyC-rY3GqE3jAS6PUOfxqg5KNfmMv9hRB1Q',
+  apiKey: 'YOUR API KEY',
   appId: '1:320201170891:web:cf8b719942d1382936204e',
   messagingSenderId: '320201170891',
   projectId: 'foodmngmt-a8c19',

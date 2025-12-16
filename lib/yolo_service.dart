@@ -41,7 +41,7 @@ class YoloService {
 
   static const String _apiKey = String.fromEnvironment(
     'FOODMNGMT_YOLO_API_KEY',
-    defaultValue: '1xqT8ACgjPaH4mS3I1tG',
+    defaultValue: 'YOUR API KEY',
   );
 
   static final double _minConfidence =

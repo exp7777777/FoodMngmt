@@ -42,7 +42,7 @@ class DefaultFirebaseOptions {
   // 你可以在 Firebase Console > 專案設定 > 一般 > 你的應用程式 中找到這些值
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyC-rY3GqE3jAS6PUOfxqg5KNfmMv9hRB1Q',
+    apiKey: 'YOUR API KEY',
     appId: '1:320201170891:web:cf8b719942d1382936204e',
     messagingSenderId: '320201170891',
     projectId: 'foodmngmt-a8c19',
@@ -52,7 +52,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyB5MvTMhfRu-CXTuQmi05NSDb2zLjZKSYo',
+    apiKey: 'YOUR API KEY',
     appId: '1:320201170891:android:8c768a27964b726b36204e',
     messagingSenderId: '320201170891',
     projectId: 'foodmngmt-a8c19',
@@ -60,27 +60,29 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBBRZhusdLaxbz8QGcIT-FDQxoSt7DIVwY',
+    apiKey: 'YOUR API KEY',
     appId: '1:320201170891:ios:05a1121986d3f74436204e',
     messagingSenderId: '320201170891',
     projectId: 'foodmngmt-a8c19',
     storageBucket: 'foodmngmt-a8c19.firebasestorage.app',
-    iosClientId: '320201170891-h4pr72s58efkdmqh6uluggb1cfkijsb1.apps.googleusercontent.com',
+    iosClientId:
+        '320201170891-h4pr72s58efkdmqh6uluggb1cfkijsb1.apps.googleusercontent.com',
     iosBundleId: 'com.example.foodmngmt',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBBRZhusdLaxbz8QGcIT-FDQxoSt7DIVwY',
+    apiKey: 'YOUR API KEY',
     appId: '1:320201170891:ios:05a1121986d3f74436204e',
     messagingSenderId: '320201170891',
     projectId: 'foodmngmt-a8c19',
     storageBucket: 'foodmngmt-a8c19.firebasestorage.app',
-    iosClientId: '320201170891-h4pr72s58efkdmqh6uluggb1cfkijsb1.apps.googleusercontent.com',
+    iosClientId:
+        '320201170891-h4pr72s58efkdmqh6uluggb1cfkijsb1.apps.googleusercontent.com',
     iosBundleId: 'com.example.foodmngmt',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyC-rY3GqE3jAS6PUOfxqg5KNfmMv9hRB1Q',
+    apiKey: 'YOUR API KEY',
     appId: '1:320201170891:web:f0ca66c0d1160c1a36204e',
     messagingSenderId: '320201170891',
     projectId: 'foodmngmt-a8c19',
@@ -88,5 +90,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'foodmngmt-a8c19.firebasestorage.app',
     measurementId: 'G-DS03LREMFK',
   );
-
 }

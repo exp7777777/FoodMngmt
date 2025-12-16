@@ -19,7 +19,7 @@ class GeminiRecipeService {
   GeminiRecipeService._();
 
   // 使用與 GeminiService 相同的 API Key
-  static const String _apiKey = 'AIzaSyDoOdI2d4OETtygEqwNqTLUilBGyj4IpIA';
+  static const String _apiKey = 'YOUR API KEY';
   static const String _modelName = 'models/gemini-2.5-pro';
   static const Duration _requestTimeout = Duration(seconds: 45);
   static const Map<String, dynamic> _defaultGenerationConfig = {

@@ -18,7 +18,7 @@ class VoiceService {
   String _currentRecognizedText = ''; // 保存當前識別的文字
 
   // 使用用戶提供的 Generative Language API Key
-  static const String _apiKey = 'AIzaSyAfeC8SPOpeaNYcxs3dtFZoxePrmccNgbg';
+  static const String _apiKey = 'YOUR API KEY';
 
   /// 初始化語音識別
   Future<bool> initialize() async {
