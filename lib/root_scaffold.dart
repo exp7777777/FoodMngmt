@@ -10,9 +10,40 @@ import 'foodmngmt_FoodManager.dart';
 import 'pages_shopping_list.dart';
 import 'pages_food_form.dart';
 import 'pages_calendar.dart';
+import 'pages_ai_menu.dart';
 import 'pages_settings.dart';
 import 'localization.dart';
 import 'image_recognition_helper.dart';
+
+/// 自定義淡入淡出動畫器 - 直接在目標位置淡入/淡出
+class _FadeFabAnimator extends FloatingActionButtonAnimator {
+  const _FadeFabAnimator();
+
+  @override
+  Offset getOffset({
+    required Offset begin,
+    required Offset end,
+    required double progress,
+  }) {
+    // 直接跳到目標位置，不做位置動畫
+    return end;
+  }
+
+  @override
+  Animation<double> getScaleAnimation({required Animation<double> parent}) {
+    // 使用淡入淡出效果（透過縮放從0到1）
+    return CurvedAnimation(
+      parent: parent,
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  Animation<double> getRotationAnimation({required Animation<double> parent}) {
+    // 不旋轉
+    return const AlwaysStoppedAnimation<double>(0.0);
+  }
+}
 
 class RootScaffold extends StatefulWidget {
   final int initialIndex;
@@ -31,29 +62,190 @@ class _RootScaffoldState extends State<RootScaffold> {
     _index = widget.initialIndex;
   }
 
+  /// 顯示新增購物項目對話框
+  void _showAddShoppingItemDialog(BuildContext context) {
+    final nameController = TextEditingController();
+    final amountController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                Icons.add_shopping_cart,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              const Text('新增購物項目'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: '項目名稱',
+                  hintText: '例如：雞蛋、牛奶',
+                  prefixIcon: const Icon(Icons.shopping_bag_outlined),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: amountController,
+                decoration: InputDecoration(
+                  labelText: '數量/單位（選填）',
+                  hintText: '例如：2盒、500g',
+                  prefixIcon: const Icon(Icons.numbers),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) async {
+                  await _addShoppingItem(
+                    dialogContext,
+                    nameController.text,
+                    amountController.text,
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await _addShoppingItem(
+                  dialogContext,
+                  nameController.text,
+                  amountController.text,
+                );
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('新增'),
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+      // 清理控制器
+      nameController.dispose();
+      amountController.dispose();
+    });
+  }
+
+  /// 新增購物項目
+  Future<void> _addShoppingItem(
+    BuildContext dialogContext,
+    String name,
+    String amount,
+  ) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('請輸入項目名稱'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // 檢查用戶是否登入
+    final authProvider = context.read<AuthProvider>();
+    if (!authProvider.isLoggedIn) {
+      Navigator.pop(dialogContext);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('請先登入才能新增購物項目'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // 防止重複點擊
+    final shoppingProvider = context.read<ShoppingProvider>();
+    if (shoppingProvider.isLoading) return;
+
+    try {
+      await shoppingProvider.add(
+        trimmedName,
+        amount: amount.trim().isEmpty ? null : amount.trim(),
+      );
+
+      if (dialogContext.mounted) {
+        Navigator.pop(dialogContext);
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已新增「$trimmedName」到購物清單'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('新增失敗: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
       FoodMngmtPage(),
-      const CalendarPage(),
+      const AiMenuPage(),
       const ShoppingListPage(),
       const SettingsPage(),
     ];
     return Scaffold(
       body: IndexedStack(index: _index, children: pages),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            backgroundColor: Colors.transparent,
-            builder: (ctx) {
-              return _AddActionSheet(rootContext: context);
-            },
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: _index == 1
+          ? null // 剩食譜頁籤：不顯示按鈕
+          : _index == 2
+              ? // 購物清單頁籤：顯示「新增」按鈕
+              FloatingActionButton.extended(
+                  onPressed: () => _showAddShoppingItemDialog(context),
+                  icon: const Icon(Icons.add_shopping_cart),
+                  label: const Text('新增'),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                )
+              : // 其他頁籤顯示原本的 + 按鈕
+              FloatingActionButton(
+                  onPressed: () {
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: Colors.transparent,
+                      builder: (ctx) {
+                        return _AddActionSheet(rootContext: context);
+                      },
+                    );
+                  },
+                  child: const Icon(Icons.add),
+                ),
+      floatingActionButtonLocation: _index == 2
+          ? FloatingActionButtonLocation.endFloat // 購物清單：右下角
+          : FloatingActionButtonLocation.centerDocked, // 其他頁籤：中間
+      floatingActionButtonAnimator: const _FadeFabAnimator(), // 淡入淡出動畫
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: _index,
@@ -66,8 +258,8 @@ class _RootScaffoldState extends State<RootScaffold> {
             label: AppLocalizations.of(context).listTab,
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today),
-            label: AppLocalizations.of(context).calendarTab,
+            icon: Icon(Icons.restaurant_menu),
+            label: '剩食譜',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),

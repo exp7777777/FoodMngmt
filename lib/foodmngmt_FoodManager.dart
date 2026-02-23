@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'pages_food_form.dart';
 import 'providers.dart';
-import 'pages_ai_menu.dart';
+import 'pages_calendar.dart';
 import 'localization.dart';
 
 class FoodMngmtPage extends StatefulWidget {
@@ -56,12 +56,12 @@ class _FoodMngmtPageState extends State<FoodMngmtPage> {
         title: Text(AppLocalizations.of(context).foodManagerTitle),
         actions: [
           IconButton(
-            icon: const Icon(Icons.book),
-            tooltip: AppLocalizations.of(context).aiMenuRecommendation,
+            icon: const Icon(Icons.calendar_today),
+            tooltip: AppLocalizations.of(context).calendarTab,
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const AiMenuPage()),
+                MaterialPageRoute(builder: (_) => const CalendarPage()),
               );
             },
           ),
