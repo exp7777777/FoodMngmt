@@ -327,7 +327,7 @@ class _AiMenuPageState extends State<AiMenuPage> {
                         ),
                       ),
 
-                      // 所需材料
+                      // 所需材料（區分已有/缺少）
                       const SizedBox(height: 12),
                       Text(
                         '所需材料：',
@@ -339,48 +339,19 @@ class _AiMenuPageState extends State<AiMenuPage> {
                       ),
                       const SizedBox(height: 4),
                       ...s.requiredItems.entries.map(
-                        (e) => Padding(
-                          padding: const EdgeInsets.only(bottom: 2),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.check_circle,
-                                size: 14,
-                                color: Colors.green,
-                              ),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  e.value,
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      // 缺少的材料
-                      if (!hasAll) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          '缺少的材料：',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.orange[800],
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        ...s.missingItems.entries.map(
-                          (e) => Padding(
+                        (e) {
+                          final isMissing = s.missingItems.containsKey(e.key);
+                          return Padding(
                             padding: const EdgeInsets.only(bottom: 2),
                             child: Row(
                               children: [
                                 Icon(
-                                  Icons.error_outline,
+                                  isMissing
+                                      ? Icons.cancel_outlined
+                                      : Icons.check_circle,
                                   size: 14,
-                                  color: Colors.orange,
+                                  color:
+                                      isMissing ? Colors.orange : Colors.green,
                                 ),
                                 const SizedBox(width: 4),
                                 Expanded(
@@ -388,15 +359,26 @@ class _AiMenuPageState extends State<AiMenuPage> {
                                     e.value,
                                     style: TextStyle(
                                       fontSize: 13,
-                                      color: Colors.orange[800],
+                                      color: isMissing
+                                          ? Colors.orange[800]
+                                          : null,
                                     ),
                                   ),
                                 ),
+                                if (isMissing)
+                                  Text(
+                                    '缺少',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.orange[700],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                               ],
                             ),
-                          ),
-                        ),
-                      ],
+                          );
+                        },
+                      ),
 
                       // 操作按鈕
                       const SizedBox(height: 12),

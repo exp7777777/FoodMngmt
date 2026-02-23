@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_key_service.dart';
 import 'recipe_models.dart';
 
 /// Gemini 食譜生成服務
@@ -18,89 +19,47 @@ class GeminiRecipeService {
 
   GeminiRecipeService._();
 
-  // 使用與 GeminiService 相同的 API Key（透過 --dart-define 提供）
-  static const String _apiKey = String.fromEnvironment(
-    'FOODMNGMT_GEMINI_API_KEY',
-    defaultValue: 'YOUR API KEY',
-  );
-  static const String _modelName = 'models/gemini-2.5-pro';
-  static const Duration _requestTimeout = Duration(seconds: 45);
+  // 使用設定頁儲存的 Gemini API Key
+  static const String _modelName = 'models/gemini-2.5-flash';
+  static const Duration _requestTimeout = Duration(seconds: 60);
+  static const Duration _recipeCacheTtl = Duration(minutes: 5);
+  static const int _fixedRecipeCount = 10;
+  static const int _recipesPerBatch = 2;
   static const Map<String, dynamic> _defaultGenerationConfig = {
     'temperature': 0.5,
     'topK': 30,
     'topP': 0.85,
-    'maxOutputTokens': 2048,
+    'maxOutputTokens': 8192,
     'responseMimeType': 'application/json',
   };
-  static const Map<String, dynamic> _recipeResponseSchema = {
+  static const Map<String, dynamic> _ingredientSchema = {
     'type': 'OBJECT',
-    'required': ['recipes'],
+    'required': ['name', 'amount', 'unit'],
     'properties': {
-      'recipes': {
-        'type': 'ARRAY',
-        'items': {
-          'type': 'OBJECT',
-          'required': [
-            'id',
-            'title',
-            'description',
-            'preparationTime',
-            'difficulty',
-            'requiredIngredients',
-            'missingIngredients',
-            'steps',
-          ],
-          'properties': {
-            'id': {'type': 'STRING'},
-            'title': {'type': 'STRING'},
-            'description': {'type': 'STRING'},
-            'preparationTime': {'type': 'STRING'},
-            'difficulty': {
-              'type': 'STRING',
-              'format': 'enum',
-              'enum': ['簡單', '中等', '困難'],
-            },
-            'requiredIngredients': {
-              'type': 'ARRAY',
-              'items': {
-                'type': 'OBJECT',
-                'required': ['name', 'amount', 'unit'],
-                'properties': {
-                  'name': {'type': 'STRING'},
-                  'amount': {'type': 'STRING'},
-                  'unit': {'type': 'STRING'},
-                },
-              },
-            },
-            'missingIngredients': {
-              'type': 'ARRAY',
-              'items': {
-                'type': 'OBJECT',
-                'required': ['name', 'amount', 'unit'],
-                'properties': {
-                  'name': {'type': 'STRING'},
-                  'amount': {'type': 'STRING'},
-                  'unit': {'type': 'STRING'},
-                },
-              },
-            },
-            'steps': {
-              'type': 'ARRAY',
-              'items': {
-                'type': 'OBJECT',
-                'required': ['number', 'description'],
-                'properties': {
-                  'number': {'type': 'INTEGER'},
-                  'description': {'type': 'STRING'},
-                },
-              },
-            },
-          },
-        },
-      },
+      'name': {'type': 'STRING'},
+      'amount': {'type': 'STRING'},
+      'unit': {'type': 'STRING'},
+    },
+  };
+  static const Map<String, dynamic> _stepSchema = {
+    'type': 'OBJECT',
+    'required': ['number', 'description'],
+    'properties': {
+      'number': {'type': 'INTEGER'},
+      'description': {'type': 'STRING'},
     },
   };
   final http.Client _httpClient = http.Client();
+  final Map<String, _CachedRecipeResult> _resultCache = {};
+  final Map<String, Future<RecipeGenerationResult>> _inflightRequests = {};
+
+  Future<String?> _resolveApiKey() async {
+    final customKey = await ApiKeyService.instance.getKey(ManagedApiKey.gemini);
+    if (ApiKeyService.isUsableKey(customKey)) {
+      return customKey;
+    }
+    return null;
+  }
 
   /// 生成食譜的主要方法（批次生成）
   Future<RecipeGenerationResult> generateRecipes({
@@ -114,7 +73,50 @@ class GeminiRecipeService {
       );
     }
 
-    final targetCount = numberOfRecipes.clamp(1, 10);
+    final targetCount = _fixedRecipeCount;
+    if (numberOfRecipes != _fixedRecipeCount) {
+      debugPrint('ℹ️ 已固定食譜生成數量為 $_fixedRecipeCount 道');
+    }
+    final requestKey = _buildRequestKey(
+      availableIngredients: availableIngredients,
+      numberOfRecipes: targetCount,
+    );
+
+    final cached = _resultCache[requestKey];
+    if (cached != null &&
+        DateTime.now().difference(cached.generatedAt) < _recipeCacheTtl) {
+      debugPrint('♻️ 使用快取食譜結果（$requestKey）');
+      return RecipeGenerationResult.success(
+        recipes: List<Recipe>.from(cached.recipes),
+        requestCount: targetCount,
+      );
+    }
+
+    final inflight = _inflightRequests[requestKey];
+    if (inflight != null) {
+      debugPrint('⏳ 共用進行中的食譜請求（$requestKey）');
+      return inflight;
+    }
+
+    final future = _generateRecipesInternal(
+      availableIngredients: availableIngredients,
+      targetCount: targetCount,
+      requestKey: requestKey,
+    );
+    _inflightRequests[requestKey] = future;
+
+    try {
+      return await future;
+    } finally {
+      _inflightRequests.remove(requestKey);
+    }
+  }
+
+  Future<RecipeGenerationResult> _generateRecipesInternal({
+    required List<String> availableIngredients,
+    required int targetCount,
+    required String requestKey,
+  }) async {
     List<Recipe> recipes = [];
 
     try {
@@ -123,63 +125,122 @@ class GeminiRecipeService {
         numberOfRecipes: targetCount,
       );
     } catch (e) {
-      debugPrint('❌ 生成食譜批次失敗: $e，改用備用食譜');
-      final fallbackRecipes = _buildFallbackRecipes(
-        availableIngredients,
-        targetCount,
-      );
-      return RecipeGenerationResult.success(
-        recipes: fallbackRecipes,
-        requestCount: targetCount,
-      );
+      debugPrint('❌ 生成食譜批次失敗: $e');
     }
 
-    if (recipes.isEmpty) {
-      debugPrint('⚠️ 主要生成結果為空，改用備用食譜');
-      final fallbackRecipes = _buildFallbackRecipes(
-        availableIngredients,
-        targetCount,
-      );
-      return RecipeGenerationResult.success(
-        recipes: fallbackRecipes,
-        requestCount: targetCount,
-      );
+    if (recipes.length < targetCount) {
+      final shortfall = targetCount - recipes.length;
+      debugPrint('⚠️ AI 食譜不足（${recipes.length}/$targetCount），以備用食譜補齊 $shortfall 道');
+      final fallback = _buildFallbackRecipes(availableIngredients, shortfall);
+      recipes.addAll(fallback);
     }
 
-    debugPrint('✅ 成功生成 ${recipes.length} 個食譜（目標 $targetCount）');
-
+    debugPrint('✅ 最終取得 ${recipes.length} 個食譜（目標 $targetCount）');
+    _cacheResult(requestKey, recipes);
     return RecipeGenerationResult.success(
-      recipes: recipes,
+      recipes: recipes.take(targetCount).toList(),
       requestCount: targetCount,
     );
+  }
+
+  void _cacheResult(String key, List<Recipe> recipes) {
+    _resultCache[key] = _CachedRecipeResult(
+      recipes: List<Recipe>.from(recipes),
+      generatedAt: DateTime.now(),
+    );
+  }
+
+  String _buildRequestKey({
+    required List<String> availableIngredients,
+    required int numberOfRecipes,
+  }) {
+    final normalized =
+        availableIngredients
+            .map((item) => item.trim().toLowerCase())
+            .where((item) => item.isNotEmpty)
+            .toList()
+          ..sort();
+    return '${normalized.join('|')}#$numberOfRecipes';
   }
 
   Future<List<Recipe>> _generateRecipesBatchWithRetry({
     required List<String> availableIngredients,
     required int numberOfRecipes,
   }) async {
+    final apiKey = await _resolveApiKey();
+    if (apiKey == null) {
+      throw Exception('Gemini API Key 未設定');
+    }
+    final generatedRecipes = <Recipe>[];
+    int startIndex = 1;
+    final totalBatches = (numberOfRecipes / _recipesPerBatch).ceil();
+
+    for (int batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+      final remaining = numberOfRecipes - generatedRecipes.length;
+      if (remaining <= 0) break;
+      final batchSize = min(_recipesPerBatch, remaining);
+      final batchNum = batchIdx + 1;
+
+      final chunk = await _requestSingleBatch(
+        apiKey: apiKey,
+        availableIngredients: availableIngredients,
+        batchSize: batchSize,
+        startIndex: startIndex,
+        batchNum: batchNum,
+      );
+
+      if (chunk.isEmpty) {
+        debugPrint('❌ 第$batchNum批失敗，中止後續批次');
+        break;
+      }
+
+      generatedRecipes.addAll(chunk.take(batchSize));
+      startIndex += chunk.length;
+      debugPrint('✅ 第$batchNum/$totalBatches批完成，累計 ${generatedRecipes.length} 道');
+    }
+
+    if (generatedRecipes.isEmpty) {
+      throw Exception('所有批次食譜生成均失敗');
+    }
+    return generatedRecipes.take(numberOfRecipes).toList();
+  }
+
+  Future<List<Recipe>> _requestSingleBatch({
+    required String apiKey,
+    required List<String> availableIngredients,
+    required int batchSize,
+    required int startIndex,
+    required int batchNum,
+  }) async {
     try {
       final prompt = _buildBatchRecipePrompt(
         availableIngredients: availableIngredients,
-        numberOfRecipes: numberOfRecipes,
+        numberOfRecipes: batchSize,
+        startIndex: startIndex,
       );
-
-      final responseJson = await _sendGenerateContentRequest(prompt);
+      final responseJson = await _sendGenerateContentRequest(
+        prompt,
+        apiKey,
+        recipeCount: batchSize,
+      );
+      final finishReason = _extractFinishReason(responseJson);
+      if (finishReason == 'MAX_TOKENS') {
+        debugPrint('⚠️ 第$batchNum批被 MAX_TOKENS 截斷');
+      }
       final rawText = _extractTextFromResponse(responseJson);
       if (rawText == null || rawText.isEmpty) {
-        throw Exception('Gemini API 返回空回應');
+        debugPrint('⚠️ 第$batchNum批回應為空');
+        return [];
       }
 
       final recipes = await _parseRecipeResponse(rawText);
-      if (recipes.isEmpty) throw Exception('無法解析食譜資料');
-      if (recipes.length < numberOfRecipes) {
-        debugPrint('⚠️ 回傳食譜數量不足，預期 $numberOfRecipes，實際 ${recipes.length}');
+      if (recipes.isEmpty) {
+        debugPrint('⚠️ 第$batchNum批解析失敗');
       }
-
-      return recipes.take(numberOfRecipes).toList();
+      return recipes;
     } catch (e) {
-      debugPrint('❌ 食譜批次生成失敗: $e');
-      rethrow;
+      debugPrint('⚠️ 第$batchNum批異常: $e');
+      return [];
     }
   }
 
@@ -307,9 +368,11 @@ class GeminiRecipeService {
 
   Future<Map<String, dynamic>> _sendGenerateContentRequest(
     String prompt,
+    String apiKey,
+    {required int recipeCount}
   ) async {
     final uri = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/$_modelName:generateContent?key=$_apiKey',
+      'https://generativelanguage.googleapis.com/v1beta/$_modelName:generateContent?key=$apiKey',
     );
 
     final payload = {
@@ -323,7 +386,7 @@ class GeminiRecipeService {
       ],
       'generationConfig': {
         ..._defaultGenerationConfig,
-        'responseSchema': _recipeResponseSchema,
+        'responseSchema': _buildRecipeResponseSchema(recipeCount),
       },
     };
 
@@ -347,11 +410,21 @@ class GeminiRecipeService {
     return json.decode(response.body) as Map<String, dynamic>;
   }
 
+  String? _extractFinishReason(Map<String, dynamic> jsonResponse) {
+    final candidates = jsonResponse['candidates'];
+    if (candidates is! List || candidates.isEmpty) return null;
+    final first = candidates.first;
+    if (first is! Map<String, dynamic>) return null;
+    return first['finishReason']?.toString();
+  }
+
   String? _extractTextFromResponse(Map<String, dynamic> jsonResponse) {
     final candidates = jsonResponse['candidates'];
     if (candidates is! List || candidates.isEmpty) {
       return null;
     }
+
+    String? bestText;
 
     for (final candidate in candidates) {
       if (candidate is Map<String, dynamic>) {
@@ -363,10 +436,13 @@ class GeminiRecipeService {
             candidate['output']?.toString() ??
             candidate['text']?.toString();
         if (text != null && text.isNotEmpty) {
-          return text;
+          if (bestText == null || text.length > bestText.length) {
+            bestText = text;
+          }
         }
       }
     }
+    if (bestText != null) return bestText;
 
     // 部分回應會直接把 JSON 放在 top-level
     if (jsonResponse['text'] is String) {
@@ -387,10 +463,13 @@ class GeminiRecipeService {
   String? _extractTextFromParts(dynamic parts) {
     if (parts is! List) return null;
 
+    final textBuffer = StringBuffer();
+
     for (final part in parts) {
       if (part is Map<String, dynamic>) {
         if (part['text'] is String && (part['text'] as String).isNotEmpty) {
-          return part['text'] as String;
+          textBuffer.write(part['text'] as String);
+          continue;
         }
         // 一些回應可能把 JSON 包在 inline_data/textBlock
         if (part['inlineData'] is Map) {
@@ -398,35 +477,95 @@ class GeminiRecipeService {
           if (inline['data'] is String) {
             try {
               final decoded = utf8.decode(base64.decode(inline['data']));
-              if (decoded.isNotEmpty) return decoded;
+              if (decoded.isNotEmpty) {
+                textBuffer.write(decoded);
+              }
             } catch (_) {}
           }
         }
       }
     }
-    return null;
+    final merged = textBuffer.toString().trim();
+    if (merged.isEmpty) return null;
+    return merged;
   }
 
   /// 建立批次食譜生成提示詞
   String _buildBatchRecipePrompt({
     required List<String> availableIngredients,
     required int numberOfRecipes,
+    required int startIndex,
   }) {
     final ingredientList = availableIngredients.join('、');
+    final endIndex = startIndex + numberOfRecipes - 1;
 
     return '''
-你是一名專業料理顧問。請根據以下食材，設計 $numberOfRecipes 道不同風格的料理，並以 JSON 回覆，結構需與 schema 相符：
+你是一名專業料理顧問。請根據以下食材，設計 $numberOfRecipes 道不同風格的料理。直接輸出合法 JSON，不要包含任何額外文字。
 
 現有食材：$ingredientList
 
-輸出要求：
-1. recipes 陣列長度必須是 $numberOfRecipes，ID 依序為 recipe_1、recipe_2...。
-2. 每道料理至少使用 1 種現有食材；requiredIngredients 必須是 {"食材": "數量單位"} 的物件，列出所有需要的食材。
-3. missingIngredients 只列出庫存沒有的食材；若沒有缺少食材，請給空物件 {}。
-4. steps 需 3~5 個繁體中文完整句。
-5. difficulty 只能是「簡單」、「中等」或「困難」。
-6. 請直接輸出合法 JSON，不要包含額外文字或 Markdown。
+規則：
+- recipes 陣列恰好 $numberOfRecipes 筆，id 依序為 recipe_$startIndex 到 recipe_$endIndex。
+- 每道至少使用 1 種現有食材。
+- requiredIngredients / missingIngredients 為陣列，元素固定 {"name":"","amount":"","unit":""}。無缺料時 missingIngredients 為 []。
+- steps 恰好 3 步，number 從 1 連號。
+- difficulty 僅限「簡單」「中等」「困難」。
+- preparationTime 格式：「X分鐘」或「X小時Y分鐘」。
+- description 30 字內，每步驟 25 字內。
+- 不可輸出 null、不可新增未定義欄位。
 ''';
+  }
+
+  Map<String, dynamic> _buildRecipeResponseSchema(int recipeCount) {
+    return {
+      'type': 'OBJECT',
+      'required': ['recipes'],
+      'properties': {
+        'recipes': {
+          'type': 'ARRAY',
+          'minItems': recipeCount,
+          'maxItems': recipeCount,
+          'items': {
+            'type': 'OBJECT',
+            'required': [
+              'id',
+              'title',
+              'description',
+              'preparationTime',
+              'difficulty',
+              'requiredIngredients',
+              'missingIngredients',
+              'steps',
+            ],
+            'properties': {
+              'id': {'type': 'STRING'},
+              'title': {'type': 'STRING'},
+              'description': {'type': 'STRING'},
+              'preparationTime': {'type': 'STRING'},
+              'difficulty': {
+                'type': 'STRING',
+                'format': 'enum',
+                'enum': ['簡單', '中等', '困難'],
+              },
+              'requiredIngredients': {
+                'type': 'ARRAY',
+                'items': _ingredientSchema,
+              },
+              'missingIngredients': {
+                'type': 'ARRAY',
+                'items': _ingredientSchema,
+              },
+              'steps': {
+                'type': 'ARRAY',
+                'minItems': 3,
+                'maxItems': 3,
+                'items': _stepSchema,
+              },
+            },
+          },
+        },
+      },
+    };
   }
 
   /// 解析 Gemini 回應為食譜列表（增強版）
@@ -530,16 +669,15 @@ class GeminiRecipeService {
   /// 將 JSON 陣列轉換為 Recipe 物件
   List<Recipe> _convertToRecipes(List<dynamic> recipesJson) {
     final List<Recipe> recipes = [];
+    final now = DateTime.now();
 
     for (int i = 0; i < recipesJson.length; i++) {
       try {
-        final recipeMap = recipesJson[i] as Map<String, dynamic>;
-
-        // 為每個食譜生成唯一 ID
-        recipeMap['id'] =
-            'gemini_recipe_${DateTime.now().millisecondsSinceEpoch}_$i';
-        recipeMap['createdAt'] = DateTime.now().toIso8601String();
-        recipeMap['source'] = 'Gemini AI';
+        final rawMap = recipesJson[i];
+        if (rawMap is! Map<String, dynamic>) {
+          throw Exception('食譜格式不是物件');
+        }
+        final recipeMap = _normalizeRecipeMap(rawMap, index: i, now: now);
 
         final recipe = Recipe.fromMap(recipeMap);
         recipes.add(recipe);
@@ -552,6 +690,99 @@ class GeminiRecipeService {
     }
 
     return recipes;
+  }
+
+  Map<String, dynamic> _normalizeRecipeMap(
+    Map<String, dynamic> rawMap, {
+    required int index,
+    required DateTime now,
+  }) {
+    String stringify(dynamic value, {String fallback = ''}) {
+      final text = value?.toString().trim() ?? '';
+      return text.isEmpty ? fallback : text;
+    }
+
+    String normalizeDifficulty(dynamic value) {
+      final text = stringify(value, fallback: '中等');
+      if (text == '簡單' || text == '中等' || text == '困難') return text;
+      return '中等';
+    }
+
+    String normalizePreparationTime(dynamic value) {
+      final text = stringify(value, fallback: '30分鐘');
+      final isValid = RegExp(r'^\d+分鐘$|^\d+小時(\d+分鐘)?$').hasMatch(text);
+      return isValid ? text : '30分鐘';
+    }
+
+    List<Map<String, dynamic>> normalizeIngredients(dynamic value) {
+      final normalized = <Map<String, dynamic>>[];
+      if (value is List) {
+        for (final item in value) {
+          if (item is Map) {
+            final name = stringify(item['name']);
+            if (name.isEmpty) continue;
+            normalized.add({
+              'name': name,
+              'amount': stringify(item['amount'], fallback: '適量'),
+              'unit': stringify(item['unit'], fallback: ''),
+            });
+          }
+        }
+      } else if (value is Map) {
+        value.forEach((key, rawAmount) {
+          final name = key.toString().trim();
+          if (name.isEmpty) return;
+          normalized.add({
+            'name': name,
+            'amount': stringify(rawAmount, fallback: '適量'),
+            'unit': '',
+          });
+        });
+      }
+      return normalized;
+    }
+
+    List<Map<String, dynamic>> normalizeSteps(dynamic value) {
+      final normalized = <Map<String, dynamic>>[];
+      if (value is List) {
+        for (int i = 0; i < value.length; i++) {
+          final item = value[i];
+          if (item is Map) {
+            final description = stringify(item['description']);
+            if (description.isEmpty) continue;
+            final number =
+                int.tryParse(item['number']?.toString() ?? '') ?? (i + 1);
+            normalized.add({'number': number, 'description': description});
+          } else {
+            final description = stringify(item);
+            if (description.isEmpty) continue;
+            normalized.add({'number': i + 1, 'description': description});
+          }
+        }
+      }
+
+      while (normalized.length < 3) {
+        final number = normalized.length + 1;
+        normalized.add({'number': number, 'description': '步驟$number'});
+      }
+      return normalized.take(3).toList();
+    }
+
+    return {
+      'id': stringify(
+        rawMap['id'],
+        fallback: 'gemini_recipe_${now.millisecondsSinceEpoch}_${index + 1}',
+      ),
+      'title': stringify(rawMap['title'], fallback: '食譜${index + 1}'),
+      'description': stringify(rawMap['description'], fallback: '暫無描述'),
+      'preparationTime': normalizePreparationTime(rawMap['preparationTime']),
+      'difficulty': normalizeDifficulty(rawMap['difficulty']),
+      'requiredIngredients': normalizeIngredients(rawMap['requiredIngredients']),
+      'missingIngredients': normalizeIngredients(rawMap['missingIngredients']),
+      'steps': normalizeSteps(rawMap['steps']),
+      'createdAt': now.toIso8601String(),
+      'source': 'Gemini AI',
+    };
   }
 
   /// 嘗試部分解析回應（增強版）
@@ -673,7 +904,7 @@ class GeminiRecipeService {
 
       final result = await generateRecipes(
         availableIngredients: testIngredients,
-        numberOfRecipes: 3,
+        numberOfRecipes: _fixedRecipeCount,
       );
 
       if (result.isSuccess) {
@@ -715,6 +946,15 @@ class GeminiRecipeService {
 
   /// 重置服務狀態
   void reset() {
+    _resultCache.clear();
+    _inflightRequests.clear();
     debugPrint('Gemini 食譜服務已重置');
   }
+}
+
+class _CachedRecipeResult {
+  final List<Recipe> recipes;
+  final DateTime generatedAt;
+
+  _CachedRecipeResult({required this.recipes, required this.generatedAt});
 }

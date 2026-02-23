@@ -6,19 +6,17 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import 'firebase_service.dart';
-import 'push_notification_service.dart';
 
 class FoodProvider extends ChangeNotifier {
   final FoodRepository _repo;
-  final FirebaseService _firebaseService = FirebaseService.instance;
+  final FirebaseService _localService = FirebaseService.instance;
 
   FoodProvider(this._repo) {
-    // 延遲監聽身份驗證狀態變化，確保Firebase已初始化
+    // 以 API session 為來源，初始化後直接嘗試載入資料。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _listenToAuthChanges();
+      _loadData();
     });
   }
 
@@ -26,7 +24,6 @@ class FoodProvider extends ChangeNotifier {
   List<FoodItem> _items = []; // 儲存篩選後的資料
   String _keyword = '';
   bool _onlyExpiring = false;
-  String? _lastUserId; // 追蹤上次載入資料的用戶 ID
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -35,33 +32,6 @@ class FoodProvider extends ChangeNotifier {
   bool get onlyExpiring => _onlyExpiring;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
-
-  void _listenToAuthChanges() {
-    // 延遲監聽Firebase Auth狀態變化，避免初始化時機問題
-    Future.delayed(const Duration(milliseconds: 200), () {
-      try {
-        FirebaseAuth.instance.authStateChanges().listen((User? user) {
-          final currentUserId = user?.uid;
-          if (currentUserId != _lastUserId) {
-            _lastUserId = currentUserId;
-            if (currentUserId != null) {
-              debugPrint('用戶已登入，載入食材資料: $currentUserId');
-              _loadData();
-            } else {
-              debugPrint('用戶已登出，清空食材資料');
-              _allItems = [];
-              _items = [];
-              _errorMessage = null;
-              unawaited(_syncExpiryReminders());
-              notifyListeners();
-            }
-          }
-        });
-      } catch (e) {
-        debugPrint('FoodProvider Auth 監聽設定失敗: $e');
-      }
-    });
-  }
 
   Future<void> _loadData() async {
     // 防止重複載入
@@ -76,27 +46,24 @@ class FoodProvider extends ChangeNotifier {
       notifyListeners();
 
       // 確保用戶已登入
-      if (_firebaseService.currentUserId == null) {
+      if (_localService.currentUserId == null) {
         debugPrint('用戶未登入，無法載入食材資料');
         _allItems = [];
         _items = [];
         _isLoading = false;
-        await _syncExpiryReminders();
         notifyListeners();
         return;
       }
 
-      final items = await _firebaseService.getFoodItems(
+      final items = await _localService.getFoodItems(
         keyword: null, // 載入時不篩選，在本地篩選
         onlyExpiring: false,
-        userId: _firebaseService.currentUserId,
+        userId: _localService.currentUserId,
       );
       _allItems = items;
-      _lastUserId = _firebaseService.currentUserId; // 更新上次載入的用戶 ID
       _applyFilters(); // 應用篩選條件
       debugPrint('成功載入 ${items.length} 個食材項目');
       _isLoading = false;
-      await _syncExpiryReminders();
       notifyListeners();
     } catch (e) {
       debugPrint('FoodProvider 載入資料錯誤: $e');
@@ -104,13 +71,11 @@ class FoodProvider extends ChangeNotifier {
       _items = [];
       _errorMessage = '載入資料失敗: $e';
       _isLoading = false;
-      await _syncExpiryReminders();
       notifyListeners();
     }
   }
 
   Future<void> refresh() async {
-    _lastUserId = null; // 重置用戶 ID 以強制重新載入
     await _loadData(); // 直接載入資料，避免重複註冊監聽器
   }
 
@@ -152,14 +117,6 @@ class FoodProvider extends ChangeNotifier {
     _items = filteredItems;
   }
 
-  Future<void> _syncExpiryReminders() async {
-    try {
-      await PushNotificationService.instance.refreshExpiryReminders(_allItems);
-    } catch (e) {
-      debugPrint('同步到期提醒失敗：$e');
-    }
-  }
-
   Future<void> add(FoodItem item) async {
     try {
       final itemId = await _repo.insert(item);
@@ -169,7 +126,6 @@ class FoodProvider extends ChangeNotifier {
       final newItem = item.copyWith(id: itemId);
       _allItems.add(newItem);
       _applyFilters();
-      await _syncExpiryReminders();
       notifyListeners();
     } catch (e) {
       debugPrint('Error adding food item: $e');
@@ -187,7 +143,6 @@ class FoodProvider extends ChangeNotifier {
       if (index != -1) {
         _allItems[index] = item;
         _applyFilters();
-        await _syncExpiryReminders();
         notifyListeners();
       }
     } catch (e) {
@@ -204,7 +159,6 @@ class FoodProvider extends ChangeNotifier {
       // 直接從本地狀態移除，避免重新載入
       _allItems.removeWhere((item) => item.id == id);
       _applyFilters();
-      await _syncExpiryReminders();
       notifyListeners();
     } catch (e) {
       debugPrint('Error removing food item: $e');
@@ -215,12 +169,12 @@ class FoodProvider extends ChangeNotifier {
 
 class ShoppingProvider extends ChangeNotifier {
   final ShoppingRepository _repo;
-  final FirebaseService _firebaseService = FirebaseService.instance;
+  final FirebaseService _localService = FirebaseService.instance;
 
   ShoppingProvider(this._repo) {
-    // 延遲初始化資料，確保Firebase已完全初始化
+    // 以 API session 為來源，初始化後直接嘗試載入資料。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeData();
+      _loadData();
     });
   }
 
@@ -237,26 +191,6 @@ class ShoppingProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  void _initializeData() async {
-    // 等待 Firebase 完全初始化
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // 檢查當前用戶狀態
-    final currentUserId = _firebaseService.currentUserId;
-
-    if (currentUserId != null) {
-      await _loadData();
-    }
-
-    // 開始監聽 Auth 狀態變化
-    _listenToAuthChanges();
-  }
-
-  void _listenToAuthChanges() {
-    // 不再直接監聽 Firebase Auth，而是通過 FirebaseService 的狀態變化
-    // 避免與 FirebaseService 的監聽器衝突
-  }
-
   Future<void> _loadData() async {
     // 防止重複載入
     if (_isLoading) {
@@ -269,7 +203,7 @@ class ShoppingProvider extends ChangeNotifier {
       notifyListeners();
 
       // 確保用戶已登入
-      if (_firebaseService.currentUserId == null) {
+      if (_localService.currentUserId == null) {
         _allItems = [];
         _items = List.from(_allItems);
         _isLoading = false;
@@ -277,8 +211,8 @@ class ShoppingProvider extends ChangeNotifier {
         return;
       }
 
-      final items = await _firebaseService.getShoppingItems(
-        userId: _firebaseService.currentUserId,
+      final items = await _localService.getShoppingItems(
+        userId: _localService.currentUserId,
       );
 
       // 去重：根據 ID 移除重複項目
@@ -403,7 +337,7 @@ class ShoppingProvider extends ChangeNotifier {
 
 class UserProfileProvider extends ChangeNotifier {
   final AuthRepository _authRepo = AuthRepository();
-  final FirebaseService _firebaseService = FirebaseService.instance;
+  final FirebaseService _localService = FirebaseService.instance;
 
   UserProfileProvider() {
     // 監聽用戶資料變化
@@ -417,9 +351,9 @@ class UserProfileProvider extends ChangeNotifier {
   String? get email => _email;
 
   Future<void> _loadUserData() async {
-    if (_firebaseService.currentUser != null) {
-      _email = _firebaseService.currentUserEmail;
-      _nickname = _firebaseService.currentUser?.displayName;
+    if (_localService.currentUser != null) {
+      _email = _localService.currentUserEmail;
+      _nickname = _localService.currentUser?.displayName;
       notifyListeners();
     }
   }
@@ -432,7 +366,7 @@ class UserProfileProvider extends ChangeNotifier {
     if (nickname != null) _nickname = nickname;
     if (email != null) _email = email;
 
-    // 更新 Firebase 中的用戶資料
+    // 更新本機資料庫中的使用者資料
     await _authRepo.updateProfile(displayName: nickname, email: email);
 
     notifyListeners();
@@ -502,21 +436,21 @@ class AppSettingsProvider extends ChangeNotifier {
 
 class AuthProvider extends ChangeNotifier {
   final AuthRepository _repo;
-  final FirebaseService _firebaseService = FirebaseService.instance;
+  final FirebaseService _localService = FirebaseService.instance;
 
   AuthProvider(this._repo) {
     // 監聽身份驗證狀態變化
-    _firebaseService.currentUser; // 觸發初始化
+    _localService.currentUser; // 觸發初始化
   }
 
   String? _currentEmail;
   String? get currentEmail => _currentEmail;
-  String? get currentUserId => _firebaseService.currentUserId;
-  bool get isLoggedIn => _firebaseService.currentUser != null;
+  String? get currentUserId => _localService.currentUserId;
+  bool get isLoggedIn => _localService.currentUser != null;
 
   Future<void> loadSession() async {
-    // Firebase Auth 會自動處理會話狀態
-    _currentEmail = _firebaseService.currentUserEmail;
+    // 改由 API token session 還原狀態。
+    _currentEmail = _localService.currentUserEmail;
     notifyListeners();
   }
 
@@ -565,7 +499,7 @@ class AuthProvider extends ChangeNotifier {
     final result = await _repo.signInWithGoogle();
     if (result == null) {
       // 登入成功，更新本地狀態
-      _currentEmail = _firebaseService.currentUserEmail;
+      _currentEmail = _localService.currentUserEmail;
       notifyListeners();
     }
     return result;
@@ -575,7 +509,7 @@ class AuthProvider extends ChangeNotifier {
     final result = await _repo.signInAnonymously();
     if (result == null) {
       // 登入成功，更新本地狀態
-      _currentEmail = _firebaseService.currentUserEmail;
+      _currentEmail = _localService.currentUserEmail;
       notifyListeners();
     }
     return result;

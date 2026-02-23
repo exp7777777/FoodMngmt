@@ -3,8 +3,10 @@ import 'package:geocoding/geocoding.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'api_key_service.dart';
 
 class LocationService {
   static LocationService? _instance;
@@ -15,12 +17,12 @@ class LocationService {
 
   LocationService._();
 
-  // Google Places API Key
-  // 透過 --dart-define 傳入，避免把金鑰寫死在程式碼
-  static const String _googlePlacesApiKey = String.fromEnvironment(
-    'FOODMNGMT_GOOGLE_PLACES_API_KEY',
-    defaultValue: 'YOUR API KEY',
-  );
+  static const String _defaultGooglePlacesApiKey = 'YOUR API KEY';
+  static const Duration _placesRetryBackoff = Duration(minutes: 3);
+  final Map<String, Future<List<Map<String, dynamic>>>> _nearbyStoresInflight =
+      <String, Future<List<Map<String, dynamic>>>>{};
+  DateTime? _placesTemporarilyUnavailableUntil;
+  String? _placesUnavailableReason;
 
   Future<Position?> getCurrentLocation() async {
     try {
@@ -252,7 +254,44 @@ class LocationService {
 
   // 使用 Google Places API 搜尋附近的商店
   Future<List<Map<String, dynamic>>> getNearbyStores(String itemName) async {
+    final requestKey = itemName.trim().toLowerCase();
+    final inflight = _nearbyStoresInflight[requestKey];
+    if (inflight != null) {
+      return inflight;
+    }
+
+    final future = _getNearbyStoresInternal(itemName);
+    _nearbyStoresInflight[requestKey] = future;
+
     try {
+      return await future;
+    } finally {
+      if (identical(_nearbyStoresInflight[requestKey], future)) {
+        _nearbyStoresInflight.remove(requestKey);
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getNearbyStoresInternal(
+    String itemName,
+  ) async {
+    try {
+      if (_isPlacesTemporarilyUnavailable()) {
+        debugPrint('Google Places 暫時停用，使用備用店家資料');
+        return _getFallbackStores(itemName);
+      }
+
+      final placesApiKey = await ApiKeyService.instance.getConfig(
+        ManagedApiConfig.googlePlacesKey,
+      );
+      final googlePlacesApiKey = placesApiKey.trim().isNotEmpty
+          ? placesApiKey.trim()
+          : _defaultGooglePlacesApiKey;
+      if (!ApiKeyService.isUsableKey(googlePlacesApiKey)) {
+        debugPrint('Google Places API Key 未設定，使用備用資料');
+        return _getFallbackStores(itemName);
+      }
+
       // 獲取當前位置
       final position = await getCurrentLocation();
       if (position == null) {
@@ -267,14 +306,17 @@ class LocationService {
       debugPrint('搜尋附近店家：$searchQuery (類型: $placeType)');
 
       // 呼叫 Google Places API Nearby Search
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/nearbysearch/json?'
-        'location=${position.latitude},${position.longitude}&'
-        'radius=2000&'
-        'keyword=$searchQuery&'
-        'type=$placeType&'
-        'language=zh-TW&'
-        'key=$_googlePlacesApiKey',
+      final url = Uri.https(
+        'maps.googleapis.com',
+        '/maps/api/place/nearbysearch/json',
+        {
+          'location': '${position.latitude},${position.longitude}',
+          'radius': '2000',
+          'keyword': searchQuery,
+          'type': placeType,
+          'language': 'zh-TW',
+          'key': googlePlacesApiKey,
+        },
       );
 
       final response = await http.get(url);
@@ -316,6 +358,7 @@ class LocationService {
           }
 
           if (stores.isNotEmpty) {
+            _clearPlacesUnavailableState();
             debugPrint('找到 ${stores.length} 個真實店家');
             return stores;
           }
@@ -325,13 +368,51 @@ class LocationService {
       } else {
         debugPrint('Google Places API 請求失敗: ${response.statusCode}');
       }
+    } on SocketException catch (e) {
+      _markPlacesTemporarilyUnavailable('DNS/網路錯誤: ${e.message}');
+      debugPrint('搜尋附近店家失敗(Socket): ${e.message}');
+    } on http.ClientException catch (e) {
+      final message = e.message;
+      if (message.contains('Failed host lookup')) {
+        _markPlacesTemporarilyUnavailable('DNS 查詢失敗');
+      }
+      debugPrint('搜尋附近店家失敗(Client): $message');
     } catch (e) {
-      debugPrint('搜尋附近店家失敗: $e');
+      debugPrint('搜尋附近店家失敗: ${e.runtimeType}');
     }
 
     // 如果 API 失敗，使用備用資料
     debugPrint('使用備用店家資料');
     return _getFallbackStores(itemName);
+  }
+
+  bool _isPlacesTemporarilyUnavailable() {
+    final until = _placesTemporarilyUnavailableUntil;
+    if (until == null) return false;
+    if (DateTime.now().isAfter(until)) {
+      _placesTemporarilyUnavailableUntil = null;
+      _placesUnavailableReason = null;
+      return false;
+    }
+    final reason = _placesUnavailableReason;
+    if (reason != null && reason.isNotEmpty) {
+      debugPrint('Google Places 暫停中，原因: $reason');
+    }
+    return true;
+  }
+
+  void _markPlacesTemporarilyUnavailable(String reason) {
+    _placesTemporarilyUnavailableUntil = DateTime.now().add(_placesRetryBackoff);
+    _placesUnavailableReason = reason;
+    debugPrint('Google Places 暫時停用 ${_placesRetryBackoff.inMinutes} 分鐘: $reason');
+  }
+
+  void _clearPlacesUnavailableState() {
+    if (_placesTemporarilyUnavailableUntil != null) {
+      debugPrint('Google Places 已恢復可用');
+    }
+    _placesTemporarilyUnavailableUntil = null;
+    _placesUnavailableReason = null;
   }
 
   // 計算兩點之間的距離（公里）

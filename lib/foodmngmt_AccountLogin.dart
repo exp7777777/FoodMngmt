@@ -189,7 +189,7 @@ class _AccountLoginState extends State<AccountLogin> {
                           }
                           if (!context.mounted) return;
                           // 重新載入與帳號關聯的資料
-                          // 等待 Firebase 狀態更新
+                          // 等待登入狀態更新
                           await Future.delayed(
                             const Duration(milliseconds: 200),
                           );
@@ -265,7 +265,7 @@ class _AccountLoginState extends State<AccountLogin> {
                               }
                               if (!context.mounted) return;
                               // 登入成功，重新載入資料並導航
-                              // 等待 Firebase 狀態更新
+                              // 等待登入狀態更新
                               await Future.delayed(
                                 const Duration(milliseconds: 200),
                               );

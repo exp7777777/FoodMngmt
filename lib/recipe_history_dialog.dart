@@ -354,7 +354,7 @@ class _HistoryDialogState extends State<HistoryDialog> {
 
                     const SizedBox(height: 16),
 
-                    // 所需材料
+                    // 所需材料（區分已有/缺少）
                     const Text(
                       '所需材料：',
                       style: TextStyle(
@@ -364,56 +364,43 @@ class _HistoryDialogState extends State<HistoryDialog> {
                     ),
                     const SizedBox(height: 8),
                     ...item.recipe.requiredItems.entries.map(
-                      (e) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.check_circle,
-                              size: 16,
-                              color: Colors.green,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(e.value)),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // 缺少的材料
-                    if (item.recipe.missingItems.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      const Text(
-                        '缺少的材料：',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ...item.recipe.missingItems.entries.map(
-                        (e) => Padding(
+                      (e) {
+                        final isMissing =
+                            item.recipe.missingItems.containsKey(e.key);
+                        return Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Row(
                             children: [
-                              const Icon(
-                                Icons.error_outline,
+                              Icon(
+                                isMissing
+                                    ? Icons.cancel_outlined
+                                    : Icons.check_circle,
                                 size: 16,
-                                color: Colors.orange,
+                                color: isMissing ? Colors.orange : Colors.green,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   e.value,
-                                  style: const TextStyle(color: Colors.orange),
+                                  style: TextStyle(
+                                    color: isMissing ? Colors.orange : null,
+                                  ),
                                 ),
                               ),
+                              if (isMissing)
+                                Text(
+                                  '缺少',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.orange[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
                             ],
                           ),
-                        ),
-                      ),
-                    ],
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

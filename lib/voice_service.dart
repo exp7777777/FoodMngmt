@@ -3,6 +3,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'api_key_service.dart';
 
 class VoiceService {
   static VoiceService? _instance;
@@ -17,11 +18,13 @@ class VoiceService {
   bool _isInitialized = false;
   String _currentRecognizedText = ''; // 保存當前識別的文字
 
-  // 使用用戶提供的 Generative Language API Key（透過 --dart-define 提供）
-  static const String _apiKey = String.fromEnvironment(
-    'FOODMNGMT_VOICE_API_KEY',
-    defaultValue: 'YOUR API KEY',
-  );
+  Future<String?> _resolveApiKey() async {
+    final customKey = await ApiKeyService.instance.getKey(ManagedApiKey.voice);
+    if (ApiKeyService.isUsableKey(customKey)) {
+      return customKey;
+    }
+    return null;
+  }
 
   /// 初始化語音識別
   Future<bool> initialize() async {
@@ -153,6 +156,12 @@ class VoiceService {
   /// 使用 Gemini API 解析語音內容
   Future<List<Map<String, String>>> parseVoiceInput(String voiceText) async {
     try {
+      final apiKey = await _resolveApiKey();
+      if (apiKey == null) {
+        debugPrint('Voice API Key 未設定，略過語音 AI 解析');
+        return [];
+      }
+
       final prompt = '''
 你是一個專業的購物清單助手。請從以下語音輸入中提取食材名稱和數量：
 
@@ -190,7 +199,7 @@ class VoiceService {
 ''';
 
       final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=$_apiKey',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey',
       );
 
       final response = await http.post(

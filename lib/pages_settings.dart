@@ -7,6 +7,7 @@ import 'localization.dart';
 import 'foodmngmt_AccountLogin.dart';
 import 'invoice_service.dart';
 import 'models.dart';
+import 'pages_api_management.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -33,6 +34,25 @@ class SettingsPage extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (context) => AccountSettings(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Card(
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: ListTile(
+                  leading: const Icon(Icons.vpn_key),
+                  title: const Text('API 管理'),
+                  subtitle: const Text('新增或修改個人 API Key'),
+                  trailing: const Icon(Icons.arrow_forward_ios),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ApiManagementPage(),
                       ),
                     );
                   },

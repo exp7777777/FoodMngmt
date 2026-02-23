@@ -56,14 +56,7 @@ dependencies:
   cached_network_image: ^3.3.1
   speech_to_text: ^7.0.0
   permission_handler: ^11.3.1
-  # Firebase dependencies - Windows compatible versions
-  firebase_core: ^4.2.0
-  cloud_firestore: ^6.0.3
-  firebase_auth: ^6.1.1
-  firebase_storage: ^13.0.3
-  google_sign_in: ^7.2.0
   crypto: ^3.0.3
-  firebase_messaging: ^16.0.3
   flutter_local_notifications: ^17.2.2
   timezone: ^0.9.4
  

@@ -8,7 +8,6 @@ import 'theme.dart';
 import 'foodmngmt_AccountSettings.dart';
 import 'localization.dart';
 import 'firebase_service.dart';
-import 'push_notification_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
@@ -16,12 +15,9 @@ import 'package:intl/intl.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 初始化 Firebase（FirebaseService 會處理平台相容性）
-  final firebaseService = FirebaseService.instance;
-  await firebaseService.init();
-
-  // 啟動 Firebase 推播服務
-  await PushNotificationService.instance.initialize();
+  // 初始化本機資料服務（SQLite）
+  final localService = FirebaseService.instance;
+  await localService.init();
 
   // 初始化中文和英文的日期格式
   await initializeDateFormatting('zh_TW');

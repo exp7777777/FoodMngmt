@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'api_key_service.dart';
 
 class YoloDetection {
   final String label;
@@ -34,24 +35,9 @@ class YoloService {
   YoloService._();
   static final YoloService instance = YoloService._();
 
-  static const String _endpoint = String.fromEnvironment(
-    'FOODMNGMT_YOLO_ENDPOINT',
-    defaultValue: 'https://serverless.roboflow.com/exp777/yolov8/3',
-  );
-
-  static const String _apiKey = String.fromEnvironment(
-    'FOODMNGMT_YOLO_API_KEY',
-    defaultValue: 'YOUR API KEY',
-  );
-
-  static final double _minConfidence =
-      double.tryParse(
-        const String.fromEnvironment(
-          'FOODMNGMT_YOLO_MIN_CONF',
-          defaultValue: '0.35',
-        ),
-      ) ??
-      0.35;
+  static const String _defaultEndpoint =
+      'https://serverless.roboflow.com/exp777/yolov8/3';
+  static const double _defaultMinConfidence = 0.35;
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -60,11 +46,46 @@ class YoloService {
     ),
   );
 
-  bool get isConfigured => _endpoint.isNotEmpty;
+  bool get isConfigured => _defaultEndpoint.isNotEmpty;
+
+  Future<String?> _resolveApiKey() async {
+    final customKey = await ApiKeyService.instance.getKey(ManagedApiKey.yolo);
+    if (ApiKeyService.isUsableKey(customKey)) {
+      return customKey;
+    }
+    return null;
+  }
+
+  Future<String> _resolveEndpoint() async {
+    final customEndpoint = await ApiKeyService.instance.getConfig(
+      ManagedApiConfig.yoloEndpoint,
+    );
+    if (customEndpoint.trim().isNotEmpty) {
+      return customEndpoint.trim();
+    }
+    return _defaultEndpoint;
+  }
+
+  Future<double> _resolveMinConfidence() async {
+    final configValue = await ApiKeyService.instance.getConfig(
+      ManagedApiConfig.yoloMinConfidence,
+    );
+    final parsed = double.tryParse(configValue.trim());
+    if (parsed == null || parsed < 0 || parsed > 1) {
+      return _defaultMinConfidence;
+    }
+    return parsed;
+  }
 
   Future<List<YoloDetection>> detectFoods(File imageFile) async {
-    if (!isConfigured) {
-      throw StateError('YOLO 服務尚未設定 (FOODMNGMT_YOLO_ENDPOINT)');
+    final endpoint = await _resolveEndpoint();
+    final minConfidence = await _resolveMinConfidence();
+    if (endpoint.isEmpty) {
+      throw StateError('YOLO 服務尚未設定');
+    }
+    final apiKey = await _resolveApiKey();
+    if (apiKey == null) {
+      throw StateError('YOLO API Key 未設定');
     }
 
     final formData = FormData.fromMap({
@@ -76,11 +97,11 @@ class YoloService {
 
     try {
       final response = await _dio.post<Object?>(
-        _endpoint,
+        endpoint,
         data: formData,
         options: Options(
           contentType: 'multipart/form-data',
-          headers: {if (_apiKey.isNotEmpty) 'Authorization': 'Bearer $_apiKey'},
+          headers: {'Authorization': 'Bearer $apiKey'},
         ),
       );
 
@@ -101,7 +122,7 @@ class YoloService {
 
       return detections
           .map((raw) => YoloDetection.fromMap(raw as Map<String, dynamic>))
-          .where((detection) => detection.confidence >= _minConfidence)
+          .where((detection) => detection.confidence >= minConfidence)
           .toList();
     } on DioException catch (e) {
       debugPrint('YOLO API 錯誤: ${e.message}');

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'api_key_service.dart';
 
 class GeminiService {
   static GeminiService? _instance;
@@ -12,29 +13,16 @@ class GeminiService {
     return _instance!;
   }
 
-  // 在實際應用中，應該從安全的環境變數或後端服務獲取 API 金鑰
-  // 這裡透過 --dart-define 傳入，程式碼只保留預設佔位字串
-  static const String _apiKey = String.fromEnvironment(
-    'FOODMNGMT_GEMINI_API_KEY',
-    defaultValue: 'YOUR API KEY',
-  );
-
   late GenerativeModel _textModel;
   late GenerativeModel _visionModel;
+  bool _modelsInitialized = false;
 
   // 緩存機制，避免重複調用API
   final Map<String, List<dynamic>> _recipeCache = {};
   final Map<String, DateTime> _cacheTimestamps = {};
   static const Duration _cacheExpiry = Duration(hours: 2);
 
-  GeminiService._() {
-    try {
-      _initializeModelsSync();
-    } catch (e) {
-      debugPrint('Gemini 服務初始化失敗: $e');
-      rethrow;
-    }
-  }
+  GeminiService._();
 
   // 生成緩存鍵
   String _getCacheKey(List<Map<String, dynamic>> ingredients) {
@@ -66,12 +54,30 @@ class GeminiService {
     debugPrint('食譜緩存已清空');
   }
 
-  void _initializeModelsSync() {
-    // 同步初始化，使用預設模型
+  Future<String?> _resolveApiKey() async {
+    final customKey = await ApiKeyService.instance.getKey(ManagedApiKey.gemini);
+    if (ApiKeyService.isUsableKey(customKey)) {
+      return customKey;
+    }
+    return null;
+  }
+
+  Future<void> _ensureModelsInitialized() async {
+    if (_modelsInitialized) return;
+    final apiKey = await _resolveApiKey();
+    if (apiKey == null) {
+      throw StateError('Gemini API Key 未設定');
+    }
+    _initializeModelsSync(apiKey);
+    _modelsInitialized = true;
+  }
+
+  void _initializeModelsSync(String apiKey) {
+    // 同步初始化，使用可用的 API Key
     try {
       _textModel = GenerativeModel(
-        model: 'models/gemini-2.5-pro',
-        apiKey: _apiKey,
+        model: 'models/gemini-2.5-flash',
+        apiKey: apiKey,
         generationConfig: GenerationConfig(
           temperature: 0.1, // 降低溫度以提高一致性
           topK: 20, // 減少選擇範圍
@@ -81,8 +87,8 @@ class GeminiService {
       );
 
       _visionModel = GenerativeModel(
-        model: 'models/gemini-2.5-pro',
-        apiKey: _apiKey,
+        model: 'models/gemini-2.5-flash',
+        apiKey: apiKey,
         generationConfig: GenerationConfig(
           temperature: 0.1, // 降低溫度以提高一致性
           topK: 20, // 減少選擇範圍
@@ -94,34 +100,35 @@ class GeminiService {
       debugPrint('Gemini 服務同步初始化成功');
 
       // 異步檢查並更新模型
-      _initializeModelsAsync();
+      _initializeModelsAsync(apiKey);
     } catch (e) {
       debugPrint('Gemini 服務同步初始化失敗: $e');
       // 嘗試使用基本配置
-      _setupBasicModels();
+      _setupBasicModels(apiKey);
     }
   }
 
-  Future<void> _initializeModelsAsync() async {
+  Future<void> _initializeModelsAsync(String apiKey) async {
     try {
       debugPrint('Gemini 服務異步初始化完成');
       // 保持同步初始化時的模型配置
     } catch (e) {
       debugPrint('模型異步初始化失敗: $e');
       // 保持同步初始化時的模型
+      _setupBasicModels(apiKey);
     }
   }
 
-  void _setupBasicModels() {
+  void _setupBasicModels(String apiKey) {
     try {
       // 嘗試使用最基本的模型
       _textModel = GenerativeModel(
-        model: 'models/gemini-2.5-pro',
-        apiKey: _apiKey,
+        model: 'models/gemini-2.5-flash',
+        apiKey: apiKey,
       );
       _visionModel = GenerativeModel(
-        model: 'models/gemini-2.5-pro',
-        apiKey: _apiKey,
+        model: 'models/gemini-2.5-flash',
+        apiKey: apiKey,
       );
       debugPrint('使用基本模型設定');
     } catch (e) {
@@ -133,6 +140,7 @@ class GeminiService {
   // 公開方法供發票服務使用
   Future<String?> generateTextContent(String prompt) async {
     try {
+      await _ensureModelsInitialized();
       final response = await _textModel.generateContent([Content.text(prompt)]);
 
       if (response.text != null) {
@@ -166,6 +174,7 @@ class GeminiService {
     List<Map<String, dynamic>> availableIngredients,
   ) async {
     try {
+      await _ensureModelsInitialized();
       debugPrint('開始生成食譜推薦，食材數量: ${availableIngredients.length}');
 
       // 檢查是否已有緩存的食譜結果，避免重複調用API
@@ -697,6 +706,12 @@ $ingredientDetails
 
   /// 帶重試機制的食物辨識
   Future<Map<String, dynamic>> identifyFood(File imageFile) async {
+    try {
+      await _ensureModelsInitialized();
+    } catch (_) {
+      return {'success': false, 'items': [], 'error': 'Gemini API Key 未設定'};
+    }
+
     int retryCount = 0;
     Duration currentDelay = _initialRetryDelay;
 
@@ -914,6 +929,7 @@ $ingredientDetails
     List<String> shoppingList,
   ) async {
     try {
+      await _ensureModelsInitialized();
       final availableItems = availableIngredients
           .map((item) => item['name'] as String)
           .join(', ');
@@ -989,6 +1005,7 @@ $ingredientDetails
     List<Map<String, dynamic>> foods,
   ) async {
     try {
+      await _ensureModelsInitialized();
       final foodList = foods
           .map((item) => '${item['name']} ${item['quantity']}${item['unit']}')
           .join(', ');
@@ -1470,6 +1487,7 @@ $ingredientDetails
   /// 獲取食材的建議保存天數
   Future<int?> getShelfLifeForIngredient(String ingredient) async {
     try {
+      await _ensureModelsInitialized();
       final prompt = '''
 你是一個專業的食物保鮮顧問。請根據以下食材名稱，提供合理的保存天數建議。
 
@@ -1509,6 +1527,7 @@ $ingredientDetails
   /// 根據食材名稱建議詳細資訊（分類、保存天數等）
   Future<List<Map<String, dynamic>>> suggestFoodDetails(String foodName) async {
     try {
+      await _ensureModelsInitialized();
       final prompt = '''
 你是一個專業的食物管理顧問。請根據以下食材名稱，提供詳細的建議資訊：
 
